@@ -2,6 +2,10 @@
 
 Minimalist, self-hosted online store MVP built as a small Node.js monolith.
 
+## Screenshot
+
+![Plain Store homepage](docs/plain-store-screenshot.png)
+
 ## Stack
 
 - Node.js
