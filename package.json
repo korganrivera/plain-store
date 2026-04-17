@@ -1,0 +1,18 @@
+{
+  "name": "plain-store",
+  "version": "0.1.0",
+  "description": "Minimalist self-hosted online store MVP",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node --import ./src/load-env.js src/server.js",
+    "dev": "node --watch --import ./src/load-env.js src/server.js",
+    "backup": "node --import ./src/load-env.js src/backup.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "express": "^5.1.0"
+  }
+}

@@ -1,0 +1,15 @@
+[Unit]
+Description=Plain Store
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=korgan
+WorkingDirectory=/home/korgan/store
+ExecStart=/usr/bin/npm start
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

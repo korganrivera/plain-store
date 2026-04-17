@@ -1,0 +1,774 @@
+import { escapeHtml, formatCurrency } from "./utils.js";
+
+const assetVersion = process.env.ASSET_VERSION || "2026-04-17-1";
+
+function nav(currentPath, cartCount, headerSearch = "") {
+  const links = [
+    ['/order-lookup', 'Order Lookup'],
+  ];
+  return `
+    <header class="site-header">
+      <div class="wrap header-row">
+        <a href="/" class="wordmark">Plain Store</a>
+        ${headerSearch}
+        <nav class="nav" aria-label="Primary">
+          ${links
+            .map(
+              ([href, label]) =>
+                `<a href="${href}"${currentPath === href ? ' aria-current="page"' : ""}>${label}</a>`,
+            )
+            .join("")}
+          <a href="/cart"${currentPath === "/cart" ? ' aria-current="page"' : ""}>Cart (${cartCount})</a>
+        </nav>
+      </div>
+    </header>
+  `;
+}
+
+function footer(currentPath) {
+  return `
+    <footer class="site-footer">
+      <div class="wrap footer-row">
+        <a href="/admin" class="footer-admin-link"${currentPath === "/admin" ? ' aria-current="page"' : ""}>Admin</a>
+      </div>
+    </footer>
+  `;
+}
+
+function flashHtml(flash) {
+  if (!flash) {
+    return "";
+  }
+  return `<div class="flash ${escapeHtml(flash.type)}">${escapeHtml(flash.message)}</div>`;
+}
+
+export function layout({ title, currentPath, cartCount, content, flash = null, headerSearch = "" }) {
+  return `<!doctype html>
+  <html lang="en">
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>${escapeHtml(title)} | Plain Store</title>
+      <link rel="stylesheet" href="/styles.css?v=${assetVersion}">
+      <script src="/app.js?v=${assetVersion}" defer></script>
+    </head>
+    <body>
+      ${nav(currentPath, cartCount, headerSearch)}
+      <main class="wrap stack">
+        ${flashHtml(flash)}
+        ${content}
+      </main>
+      ${footer(currentPath)}
+    </body>
+  </html>`;
+}
+
+export function homePage({ categories, products, search, cartCount, flash = null }) {
+  const showCategories = categories.length > 1;
+  const headerSearch = `
+    <form action="/search" method="get" class="header-search" role="search">
+      <label for="header-search" class="sr-only">Search products</label>
+      <div class="header-search-field">
+        <input
+          id="header-search"
+          name="q"
+          type="search"
+          value="${escapeHtml(search)}"
+          placeholder="Search products"
+        >
+        <button type="submit" class="header-search-button" aria-label="Search products">
+          <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+            <path d="M13.5 12.1l4.2 4.2-1.4 1.4-4.2-4.2a6 6 0 1 1 1.4-1.4zM8.5 13a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9z"/>
+          </svg>
+        </button>
+      </div>
+    </form>
+  `;
+  return layout({
+    title: "Catalog",
+    currentPath: "/",
+    cartCount,
+    flash,
+    headerSearch,
+    content: `
+      ${
+        showCategories
+          ? `
+            <section class="stack-tight" id="categories">
+              <div class="section-heading">
+                <h2>Categories</h2>
+              </div>
+              <div class="category-grid">
+                ${categories
+                  .map(
+                    (category) => `
+                      <a class="category-card" href="/c/${escapeHtml(category.slug)}">
+                        <strong>${escapeHtml(category.name)}</strong>
+                        <span>${escapeHtml(category.description)}</span>
+                      </a>
+                    `,
+                  )
+                  .join("")}
+              </div>
+            </section>
+          `
+          : ""
+      }
+      <section class="stack-tight" id="catalog">
+        <div class="section-heading">
+          <h2>${search ? `Results for "${escapeHtml(search)}"` : "Products"}</h2>
+          <span>${products.length} items</span>
+        </div>
+        ${productGrid(products)}
+      </section>
+    `,
+  });
+}
+
+export function categoryPage({ category, products, cartCount, flash = null }) {
+  return layout({
+    title: category.name,
+    currentPath: "",
+    cartCount,
+    flash,
+    content: `
+      <section class="section-heading">
+        <div>
+          <p class="eyebrow">Category</p>
+          <h1>${escapeHtml(category.name)}</h1>
+        </div>
+        <p class="muted">${escapeHtml(category.description)}</p>
+      </section>
+      ${productGrid(products)}
+    `,
+  });
+}
+
+function productGrid(products) {
+  if (products.length === 0) {
+    return `<p class="empty-state">No products found.</p>`;
+  }
+  return `
+    <div class="product-grid">
+      ${products
+        .map(
+          (product) => `
+            <article class="product-card">
+              <a href="/p/${escapeHtml(product.slug)}" class="product-image-wrap">
+                <img src="${escapeHtml(product.image_path || "/images/placeholder.svg")}" alt="" class="product-image">
+              </a>
+              <div class="product-meta">
+                <p class="eyebrow">${escapeHtml(product.category_name)}</p>
+                <h3><a href="/p/${escapeHtml(product.slug)}">${escapeHtml(product.name)}</a></h3>
+                <p class="muted">${escapeHtml(product.description)}</p>
+              </div>
+              <div class="product-footer">
+                <strong>${formatCurrency(product.price_cents)}</strong>
+                <span>${product.inventory_count > 0 ? `${product.inventory_count} in stock` : "Out of stock"}</span>
+              </div>
+            </article>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+export function productPage({ product, cartCount, csrfToken, flash = null }) {
+  return layout({
+    title: product.name,
+    currentPath: "",
+    cartCount,
+    flash,
+    content: `
+      <article class="product-layout">
+        <div class="product-stage">
+          <img src="${escapeHtml(product.image_path || "/images/placeholder.svg")}" alt="" class="product-image product-image-large">
+        </div>
+        <div class="stack-tight">
+          <p class="eyebrow"><a href="/c/${escapeHtml(product.category_slug)}">${escapeHtml(product.category_name)}</a></p>
+          <h1>${escapeHtml(product.name)}</h1>
+          <p class="muted">${escapeHtml(product.description)}</p>
+          <p class="price">${formatCurrency(product.price_cents)}</p>
+          <p>${product.inventory_count} available</p>
+          <form action="/cart/add" method="post" class="cart-form">
+            <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
+            <input type="hidden" name="productId" value="${product.id}">
+            <label>
+              Quantity
+              <input type="number" name="quantity" min="1" max="${Math.max(product.inventory_count, 1)}" value="1">
+            </label>
+            <button type="submit"${product.inventory_count === 0 ? " disabled" : ""}>Add to cart</button>
+          </form>
+          <p class="muted product-sku">SKU ${escapeHtml(product.sku)}</p>
+        </div>
+      </article>
+    `,
+  });
+}
+
+export function cartPage({ items, totals, cartCount, csrfToken, flash = null }) {
+  return layout({
+    title: "Cart",
+    currentPath: "/cart",
+    cartCount,
+    flash,
+    content: `
+      <section class="section-heading">
+        <h1>Cart</h1>
+        <span>${cartCount} items</span>
+      </section>
+      ${
+        items.length === 0
+          ? '<p class="empty-state">Your cart is empty.</p>'
+          : `
+            <div class="cart-layout">
+              <div class="table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr><th>Item</th><th>Qty</th><th>Total</th><th></th></tr>
+                  </thead>
+                  <tbody>
+                    ${items
+                      .map(
+                        (item) => `
+                          <tr>
+                            <td>
+                              <strong><a href="/p/${escapeHtml(item.slug)}">${escapeHtml(item.name)}</a></strong>
+                              <div class="muted">${escapeHtml(item.sku)}</div>
+                            </td>
+                            <td>
+                              <form action="/cart/update" method="post" class="inline-form">
+                                <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
+                                <input type="hidden" name="productId" value="${item.id}">
+                                <input type="number" name="quantity" min="0" max="${Math.max(item.inventory_count, 1)}" value="${item.quantity}">
+                                <button type="submit">Update</button>
+                              </form>
+                            </td>
+                            <td>${formatCurrency(item.lineTotalCents)}</td>
+                            <td>
+                              <form action="/cart/remove" method="post">
+                                <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
+                                <input type="hidden" name="productId" value="${item.id}">
+                                <button type="submit" class="button-link">Remove</button>
+                              </form>
+                            </td>
+                          </tr>
+                        `,
+                      )
+                      .join("")}
+                  </tbody>
+                </table>
+              </div>
+              <aside class="summary-card">
+                <h2>Summary</h2>
+                <dl class="summary-list">
+                  <div><dt>Subtotal</dt><dd>${formatCurrency(totals.subtotalCents)}</dd></div>
+                  <div><dt>Shipping</dt><dd>${formatCurrency(totals.shippingCents)}</dd></div>
+                  <div><dt>Total</dt><dd>${formatCurrency(totals.totalCents)}</dd></div>
+                </dl>
+                <a href="/checkout" class="button-primary">Checkout</a>
+              </aside>
+            </div>
+          `
+      }
+    `,
+  });
+}
+
+export function checkoutPage({ items, totals, values, error, cartCount, csrfToken, flash = null }) {
+  return layout({
+    title: "Checkout",
+    currentPath: "",
+    cartCount,
+    flash: error ? { type: "error", message: error } : flash,
+    content: `
+      <section class="section-heading">
+        <h1>Checkout</h1>
+        <span>${cartCount} items</span>
+      </section>
+      <div class="checkout-layout">
+        <form action="/checkout" method="post" class="stack panel">
+          <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
+          <label>Email<input type="email" name="email" required value="${escapeHtml(values.email || "")}"></label>
+          <label>Full name<input type="text" name="fullName" required value="${escapeHtml(values.fullName || "")}"></label>
+          <label>Street address<input type="text" name="addressLine1" required value="${escapeHtml(
+            values.addressLine1 || "",
+          )}"></label>
+          <label>Apartment, suite, etc. <span class="muted">(optional)</span><input type="text" name="addressLine2" value="${escapeHtml(
+            values.addressLine2 || "",
+          )}"></label>
+          <div class="checkout-address-grid">
+            <label>City<input type="text" name="city" required value="${escapeHtml(values.city || "")}"></label>
+            <label>State<input type="text" name="state" required value="${escapeHtml(values.state || "")}"></label>
+            <label>Postal code<input type="text" name="postalCode" required value="${escapeHtml(
+              values.postalCode || "",
+            )}"></label>
+          </div>
+          <label>Notes<input type="text" name="notes" value="${escapeHtml(values.notes || "")}"></label>
+          <button type="submit">Place order</button>
+        </form>
+        <aside class="summary-card">
+          <h2>Order</h2>
+          <ul class="summary-items">
+            ${items
+              .map(
+                (item) =>
+                  `<li><span>${escapeHtml(item.name)} × ${item.quantity}</span><strong>${formatCurrency(
+                    item.lineTotalCents,
+                  )}</strong></li>`,
+              )
+              .join("")}
+          </ul>
+          <dl class="summary-list">
+            <div><dt>Subtotal</dt><dd>${formatCurrency(totals.subtotalCents)}</dd></div>
+            <div><dt>Shipping</dt><dd>${formatCurrency(totals.shippingCents)}</dd></div>
+            <div><dt>Total</dt><dd>${formatCurrency(totals.totalCents)}</dd></div>
+          </dl>
+        </aside>
+      </div>
+    `,
+  });
+}
+
+export function orderPage({ order, cartCount, title = "Order Confirmation", flash = null }) {
+  return layout({
+    title,
+    currentPath: "",
+    cartCount,
+    flash,
+    content: `
+      <section class="section-heading">
+        <div>
+          <p class="eyebrow">Order ${escapeHtml(order.order_number)}</p>
+          <h1>${escapeHtml(title)}</h1>
+        </div>
+        <span>${escapeHtml(order.status)}</span>
+      </section>
+      <div class="checkout-layout">
+        <section class="panel">
+          <h2>Items</h2>
+          <ul class="summary-items">
+            ${order.items
+              .map(
+                (item) =>
+                  `<li><span>${escapeHtml(item.product_name)} × ${item.quantity}</span><strong>${formatCurrency(
+                    item.line_total_cents,
+                  )}</strong></li>`,
+              )
+              .join("")}
+          </ul>
+        </section>
+        <aside class="summary-card">
+          <h2>Summary</h2>
+          <dl class="summary-list">
+            <div><dt>Email</dt><dd>${escapeHtml(order.email)}</dd></div>
+            <div><dt>Ship to</dt><dd>${escapeHtml(order.full_name)}</dd></div>
+            <div><dt>Total</dt><dd>${formatCurrency(order.total_cents)}</dd></div>
+          </dl>
+          <p class="muted preserve">${escapeHtml(order.shipping_address)}</p>
+        </aside>
+      </div>
+    `,
+  });
+}
+
+export function orderLookupPage({ cartCount, csrfToken, values = {}, error = null, flash = null }) {
+  return layout({
+    title: "Order Lookup",
+    currentPath: "/order-lookup",
+    cartCount,
+    flash: error ? { type: "error", message: error } : flash,
+    content: `
+      <section class="section-heading">
+        <h1>Order lookup</h1>
+        <p class="muted">Enter your order number and email to view order status.</p>
+      </section>
+      <form action="/order-lookup" method="post" class="panel narrow-form">
+        <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
+        <label>Order number<input type="text" name="orderNumber" required placeholder="ORD-1234ABCD" value="${escapeHtml(
+          values.orderNumber || "",
+        )}"></label>
+        <label>Email<input type="email" name="email" required value="${escapeHtml(values.email || "")}"></label>
+        <button type="submit">Look up order</button>
+      </form>
+    `,
+  });
+}
+
+export function adminLoginPage({ cartCount, csrfToken, error = null, flash = null }) {
+  return layout({
+    title: "Admin Login",
+    currentPath: "/admin",
+    cartCount,
+    flash: error ? { type: "error", message: error } : flash,
+    content: `
+      <section class="section-heading">
+        <h1>Admin</h1>
+        <p class="muted">Single-password admin for local operation.</p>
+      </section>
+      <form action="/admin/login" method="post" class="panel narrow-form">
+        <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
+        <label>Password<input type="password" name="password" required></label>
+        <button type="submit">Sign in</button>
+      </form>
+    `,
+  });
+}
+
+function adminSectionNav(currentSection) {
+  const links = [
+    ["/admin/catalog", "Catalog"],
+    ["/admin/orders", "Orders"],
+  ];
+  return `
+    <nav class="admin-section-nav" aria-label="Admin sections">
+      ${links
+        .map(
+          ([href, label]) =>
+            `<a href="${href}"${currentSection === href ? ' aria-current="page"' : ""}>${label}</a>`,
+        )
+        .join("")}
+    </nav>
+  `;
+}
+
+function adminPageFrame({ title, cartCount, flash, csrfToken, currentSection, content }) {
+  return layout({
+    title,
+    currentPath: "/admin",
+    cartCount,
+    flash,
+    content: `
+      <section class="section-heading">
+        <div class="stack-tight">
+          <h1>Admin</h1>
+          ${adminSectionNav(currentSection)}
+        </div>
+        <form action="/admin/logout" method="post">
+          <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
+          <button type="submit" class="button-link">Log out</button>
+        </form>
+      </section>
+      ${content}
+    `,
+  });
+}
+
+export function adminCatalogPage({
+  cartCount,
+  products,
+  categories,
+  editingProduct,
+  editingCategory,
+  flash,
+  csrfToken,
+}) {
+  return adminPageFrame({
+    title: "Admin Catalog",
+    cartCount,
+    flash,
+    csrfToken,
+    currentSection: "/admin/catalog",
+    content: `
+      <div class="admin-grid">
+        <section class="panel admin-products-panel">
+          <h2>Products</h2>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th>Name</th><th>SKU</th><th>Price</th><th>Stock</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody>
+                ${products
+                  .map(
+                    (product) => `
+                      <tr>
+                        <td>${escapeHtml(product.name)}</td>
+                        <td>${escapeHtml(product.sku)}</td>
+                        <td>${formatCurrency(product.price_cents)}</td>
+                        <td>${product.inventory_count}</td>
+                        <td>${escapeHtml(product.status)}</td>
+                        <td>
+                          <div class="admin-actions">
+                            <a href="/admin?product=${product.id}">Edit</a>
+                            <form action="/admin/products/delete" method="post" data-confirm="Delete this product?">
+                              <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
+                              <input type="hidden" name="id" value="${product.id}">
+                              <button type="submit" class="button-link">Delete</button>
+                            </form>
+                          </div>
+                        </td>
+                      </tr>
+                    `,
+                  )
+                  .join("")}
+              </tbody>
+            </table>
+          </div>
+        </section>
+        <section class="panel admin-product-form-panel">
+          <div class="section-heading">
+            <h2>${editingProduct ? "Edit product" : "New product"}</h2>
+            ${editingProduct ? '<a href="/admin/catalog">Create new</a>' : ""}
+          </div>
+          <form action="/admin/products" method="post" class="stack">
+            <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
+            <input type="hidden" name="id" value="${escapeHtml(editingProduct?.id || "")}">
+            <label>Name<input type="text" name="name" required value="${escapeHtml(editingProduct?.name || "")}"></label>
+            ${
+              editingProduct
+                ? `<label>SKU<input type="text" name="sku" value="${escapeHtml(editingProduct.sku || "")}" readonly></label>`
+                : `<div class="field-note">SKU will be assigned automatically when you create the product.</div>`
+            }
+            <label>Category
+              <select name="categoryId" required>
+                ${categories
+                  .map(
+                    (category) =>
+                      `<option value="${category.id}"${
+                        Number(editingProduct?.category_id) === category.id ? " selected" : ""
+                      }>${escapeHtml(category.name)}</option>`,
+                  )
+                  .join("")}
+              </select>
+            </label>
+            <label>Price<input type="text" name="price" required value="${
+              editingProduct ? (editingProduct.price_cents / 100).toFixed(2) : ""
+            }"></label>
+            <label>Inventory<input type="number" name="inventoryCount" min="0" required value="${escapeHtml(
+              editingProduct?.inventory_count || 0,
+            )}"></label>
+            <label>Status
+              <select name="status">
+                ${["active", "draft", "archived"]
+                  .map(
+                    (status) =>
+                      `<option value="${status}"${
+                        editingProduct?.status === status ? " selected" : ""
+                      }>${status}</option>`,
+                  )
+                  .join("")}
+              </select>
+            </label>
+            <label>Image path<input type="text" name="imagePath" value="${escapeHtml(
+              editingProduct?.image_path || "",
+            )}" placeholder="/images/example.svg"></label>
+            <p class="muted field-note">Large image files are not resized automatically. Use a reasonably sized local image to avoid slower page loads.</p>
+            <label>Description<textarea name="description" rows="5">${escapeHtml(
+              editingProduct?.description || "",
+            )}</textarea></label>
+            <div class="admin-actions">
+              <button type="submit">${editingProduct ? "Update product" : "Create product"}</button>
+              ${editingProduct ? '<a href="/admin/catalog" class="button-secondary">Cancel</a>' : ""}
+            </div>
+          </form>
+        </section>
+        <section class="panel admin-category-panel">
+          <div class="section-heading">
+            <h2>${editingCategory ? "Edit category" : "New category"}</h2>
+            ${editingCategory ? '<a href="/admin/catalog">Create new</a>' : ""}
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th>Name</th><th>Slug</th><th>Actions</th></tr></thead>
+              <tbody>
+                ${categories
+                  .map(
+                    (category) => `
+                      <tr>
+                        <td>${escapeHtml(category.name)}</td>
+                        <td>${escapeHtml(category.slug)}</td>
+                        <td>
+                          <div class="admin-actions">
+                            <a href="/admin?category=${category.id}">Edit</a>
+                            <form action="/admin/categories/delete" method="post" data-confirm="Delete this category?">
+                              <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
+                              <input type="hidden" name="id" value="${category.id}">
+                              <button type="submit" class="button-link">Delete</button>
+                            </form>
+                          </div>
+                        </td>
+                      </tr>
+                    `,
+                  )
+                  .join("")}
+              </tbody>
+            </table>
+          </div>
+          <form action="/admin/categories" method="post" class="stack">
+            <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
+            <input type="hidden" name="id" value="${escapeHtml(editingCategory?.id || "")}">
+            <label>Name<input type="text" name="name" required value="${escapeHtml(editingCategory?.name || "")}"></label>
+            <label>Description<input type="text" name="description" value="${escapeHtml(
+              editingCategory?.description || "",
+            )}"></label>
+            <div class="admin-actions">
+              <button type="submit">${editingCategory ? "Update category" : "Create category"}</button>
+              ${editingCategory ? '<a href="/admin/catalog" class="button-secondary">Cancel</a>' : ""}
+            </div>
+          </form>
+        </section>
+      </div>
+    `,
+  });
+}
+
+export function adminOrdersPage({ cartCount, orders, archivedOrders, flash, csrfToken }) {
+  const statuses = ["paid", "packed", "shipped", "cancelled"];
+  const labels = {
+    paid: "Paid",
+    packed: "Packed",
+    shipped: "Shipped",
+    cancelled: "Cancelled",
+  };
+
+  return adminPageFrame({
+    title: "Admin Orders",
+    cartCount,
+    flash,
+    csrfToken,
+    currentSection: "/admin/orders",
+    content: `
+      <section class="stack-tight orders-board-page">
+        <div class="section-heading">
+          <h2>Orders</h2>
+          <span>${orders.length} total</span>
+        </div>
+        <div class="orders-board-wrap">
+        <div class="orders-board">
+          ${statuses
+            .map((status) => {
+              const bucket = orders.filter((order) => order.status === status);
+              return `
+                <section class="orders-col">
+                  <header class="orders-col-header">
+                    <h3>${labels[status]}</h3>
+                    <span>${bucket.length}</span>
+                  </header>
+                  <div class="orders-list">
+                    ${
+                      bucket.length === 0
+                        ? '<p class="empty-state">No orders in this stage.</p>'
+                        : bucket
+                            .map(
+                              (order) => `
+                                <article class="orders-card">
+                                  <div class="orders-card-header">
+                                    <div>
+                                      <strong>${escapeHtml(order.order_number)}</strong>
+                                      <p class="muted">${escapeHtml(order.full_name)}</p>
+                                    </div>
+                                    <span class="orders-card-pill">${formatCurrency(order.total_cents)}</span>
+                                  </div>
+                                  <div class="orders-card-meta">
+                                    <div>${escapeHtml(order.email)}</div>
+                                    <div>${escapeHtml(order.created_at)}</div>
+                                  </div>
+                                  <dl class="orders-card-summary">
+                                    <div><dt>Items</dt><dd>${order.items.reduce((sum, item) => sum + item.quantity, 0)}</dd></div>
+                                    <div><dt>Postal</dt><dd>${escapeHtml(order.postal_code)}</dd></div>
+                                  </dl>
+                                  <div class="orders-card-block">
+                                    <div class="eyebrow">Ship to</div>
+                                    <p class="muted preserve">${escapeHtml(order.shipping_address)}</p>
+                                  </div>
+                                  <div class="orders-card-block">
+                                    <div class="eyebrow">Items</div>
+                                    <ul class="summary-items compact-list">
+                                      ${order.items
+                                        .map(
+                                          (item) =>
+                                            `<li><span>${escapeHtml(item.product_name)} × ${item.quantity}</span><strong>${formatCurrency(
+                                              item.line_total_cents,
+                                            )}</strong></li>`,
+                                        )
+                                        .join("")}
+                                    </ul>
+                                  </div>
+                                  ${
+                                    order.notes
+                                      ? `<div class="orders-card-block"><div class="eyebrow">Notes</div><p class="muted preserve">${escapeHtml(order.notes)}</p></div>`
+                                      : ""
+                                  }
+                                  <form action="/admin/orders" method="post" class="orders-card-actions">
+                                    <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
+                                    <input type="hidden" name="orderNumber" value="${escapeHtml(order.order_number)}">
+                                    <select name="status" aria-label="Order status">
+                                      ${statuses
+                                        .map(
+                                          (option) =>
+                                            `<option value="${option}"${
+                                              option === order.status ? " selected" : ""
+                                            }>${labels[option]}</option>`,
+                                        )
+                                        .join("")}
+                                    </select>
+                                    <button type="submit" class="orders-action-button">Move</button>
+                                  </form>
+                                  ${
+                                    order.status === "cancelled"
+                                      ? `
+                                        <form action="/admin/orders/archive" method="post" class="orders-card-actions orders-card-actions-secondary">
+                                          <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
+                                          <input type="hidden" name="orderNumber" value="${escapeHtml(order.order_number)}">
+                                          <button type="submit" class="button-link">Archive</button>
+                                        </form>
+                                      `
+                                      : ""
+                                  }
+                                </article>
+                              `,
+                            )
+                            .join("")
+                    }
+                  </div>
+                </section>
+              `;
+            })
+            .join("")}
+        </div>
+        </div>
+        <section class="panel archived-orders-panel">
+          <div class="section-heading">
+            <h2>Archived</h2>
+            <span>${archivedOrders.length} total</span>
+          </div>
+          ${
+            archivedOrders.length === 0
+              ? '<p class="empty-state">No archived orders.</p>'
+              : `
+                <div class="table-wrap">
+                  <table class="data-table">
+                    <thead><tr><th>Order</th><th>Status</th><th>Total</th><th>Archived</th><th></th></tr></thead>
+                    <tbody>
+                      ${archivedOrders
+                        .map(
+                          (order) => `
+                            <tr>
+                              <td>
+                                <strong>${escapeHtml(order.order_number)}</strong>
+                                <div class="muted">${escapeHtml(order.full_name)}</div>
+                              </td>
+                              <td>${escapeHtml(labels[order.status] || order.status)}</td>
+                              <td>${formatCurrency(order.total_cents)}</td>
+                              <td>${escapeHtml(order.archived_at || "")}</td>
+                              <td>
+                                <form action="/admin/orders/unarchive" method="post">
+                                  <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
+                                  <input type="hidden" name="orderNumber" value="${escapeHtml(order.order_number)}">
+                                  <button type="submit" class="button-link">Restore</button>
+                                </form>
+                              </td>
+                            </tr>
+                          `,
+                        )
+                        .join("")}
+                    </tbody>
+                  </table>
+                </div>
+              `
+          }
+        </section>
+      </section>
+    `,
+  });
+}
