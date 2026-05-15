@@ -154,3 +154,19 @@ export async function sendOrderReadyEmail(order) {
     text,
   });
 }
+
+export async function sendOrderPickedUpEmail(order) {
+  const text = [
+    `Thanks again for your order from ${storeName()}.`,
+    "",
+    "We have marked it picked up and paid.",
+    "",
+    orderSummaryText(order),
+  ].join("\n");
+
+  return sendMail({
+    to: order.email,
+    subject: `Thank you for your order: ${order.order_number}`,
+    text,
+  });
+}

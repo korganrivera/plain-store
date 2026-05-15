@@ -242,6 +242,34 @@ main {
   font-weight: 700;
 }
 
+body.admin-orders-body {
+  overflow: hidden;
+}
+
+body.admin-orders-body .site-footer {
+  display: none;
+}
+
+.admin-orders-main {
+  width: calc(100vw - 1.25rem);
+  max-width: none;
+  height: calc(100vh - 4rem);
+  margin: 0 auto;
+  padding: 0.6rem 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.admin-orders-main.stack > * + * {
+  margin-top: 0;
+}
+
+.admin-orders-main > .section-heading {
+  flex: 0 0 auto;
+}
+
 .panel,
 .summary-card,
 .category-card,
@@ -417,19 +445,26 @@ select {
 
 .orders-board-wrap {
   overflow-x: auto;
-  padding-bottom: 0.5rem;
+  overflow-y: hidden;
+  padding: 0.1rem 0 0.75rem;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .orders-board-page {
-  background: linear-gradient(180deg, #061227, #08152b);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 10px;
-  padding: 0.9rem;
-  color: #e6eef6;
+  border: 1px solid var(--line);
+  background: rgba(255, 253, 248, 0.62);
+  padding: 1rem;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 
 .orders-board-page .section-heading {
-  color: #e6eef6;
+  align-items: end;
+  flex: 0 0 auto;
 }
 
 .orders-board-page .eyebrow,
@@ -437,27 +472,47 @@ select {
 .orders-board-page .orders-col-header h3,
 .orders-board-page .orders-card-meta,
 .orders-board-page .orders-card-summary dt {
-  color: #97a6b6;
+  color: var(--muted);
 }
 
 .orders-board {
   display: flex;
-  gap: 0.6rem;
+  gap: 0.75rem;
   align-items: flex-start;
   flex-wrap: nowrap;
+  height: 100%;
+  min-width: max-content;
 }
 
 .orders-col {
-  background: linear-gradient(180deg, #071428, #061428);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: linear-gradient(180deg, #fffdf8, #f4f1ea);
+  border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 0.75rem;
-  min-width: 15rem;
-  max-width: 17rem;
+  padding: 0.65rem;
+  min-width: 16rem;
+  max-width: 18rem;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  box-shadow: 0 1px 3px rgba(2, 6, 23, 0.45);
+  gap: 0.65rem;
+  box-shadow: 0 1px 3px rgba(31, 29, 25, 0.08);
+  max-height: 100%;
+}
+
+.orders-col.status-requested {
+  border-top: 3px solid #b35c2e;
+}
+
+.orders-col.status-ready {
+  border-top: 3px solid var(--accent);
+}
+
+.orders-col.status-picked_up {
+  border-top: 3px solid #245a35;
+}
+
+.orders-col.status-cancelled,
+.orders-col.status-no_show {
+  border-top: 3px solid var(--danger);
 }
 
 .orders-col-header,
@@ -472,25 +527,40 @@ select {
 .orders-col-header h3 {
   margin: 0;
   font-size: 0.82rem;
-  color: #97a6b6;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.orders-col-count {
+  min-width: 1.55rem;
+  height: 1.55rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  background: white;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
 }
 
 .orders-list {
-  max-height: calc(100vh - 15rem);
   overflow: auto;
+  max-height: calc(100vh - 18rem);
   padding-bottom: 0.25rem;
 }
 
 .orders-card {
-  background: linear-gradient(180deg, #071428, #061428);
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  background: linear-gradient(180deg, #ffffff, #fffdf8);
+  border: 1px solid var(--line);
   border-radius: 6px;
   padding: 0.8rem;
   margin-bottom: 0.6rem;
   display: grid;
-  gap: 0.55rem;
-  box-shadow: 0 1px 2px rgba(2, 6, 23, 0.3);
-  color: #e6eef6;
+  gap: 0.65rem;
+  box-shadow: 0 1px 2px rgba(31, 29, 25, 0.06);
+  color: var(--text);
 }
 
 .orders-card:last-child {
@@ -498,7 +568,7 @@ select {
 }
 
 .orders-card strong {
-  color: #e6eef6;
+  color: var(--text);
 }
 
 .orders-card-pill {
@@ -509,15 +579,36 @@ select {
   height: 1.4rem;
   padding: 0 0.55rem;
   border-radius: 999px;
-  background: #ff5d5d;
-  color: white;
+  background: var(--accent-soft);
+  color: var(--accent);
   font-size: 0.76rem;
   font-weight: 700;
 }
 
+.orders-card.status-requested .orders-card-pill {
+  background: #f4ede0;
+  color: #8a4a26;
+}
+
+.orders-card.status-ready .orders-card-pill {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.orders-card.status-picked_up .orders-card-pill {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.orders-card.status-cancelled .orders-card-pill,
+.orders-card.status-no_show .orders-card-pill {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
 .orders-card-meta {
   font-size: 0.78rem;
-  color: #97a6b6;
+  color: var(--muted);
   display: grid;
   gap: 0.2rem;
 }
@@ -529,7 +620,7 @@ select {
 }
 
 .orders-card-summary dt {
-  color: #97a6b6;
+  color: var(--muted);
 }
 
 .orders-card-summary dd {
@@ -562,20 +653,20 @@ select {
   flex: 1;
   padding: 0.45rem 0.55rem;
   border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  background: rgba(255, 255, 255, 0.03);
-  color: #e6eef6;
+  border: 1px solid var(--line);
+  background: white;
+  color: var(--text);
 }
 
 .orders-card-actions select option {
-  color: #081826;
+  color: var(--text);
 }
 
 .orders-action-button {
   padding: 0.45rem 0.7rem;
   border-radius: 6px;
-  background: #60a5fa;
-  color: #06202b;
+  background: var(--accent);
+  color: white;
   border: 0;
   font-weight: 700;
 }
@@ -587,13 +678,13 @@ select {
 
 .orders-board-page .empty-state {
   background: transparent;
-  border: 1px dashed rgba(255, 255, 255, 0.08);
-  color: #97a6b6;
+  border: 1px dashed var(--line);
+  color: var(--muted);
   padding: 0.9rem 0.75rem;
 }
 
 .archived-orders-panel {
-  margin-top: 0.75rem;
+  margin-top: 1rem;
 }
 
 .data-table th,

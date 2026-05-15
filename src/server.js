@@ -43,7 +43,7 @@ import {
   setCookie,
 } from "./utils.js";
 import { parsePositiveInt, requireAdminProductFields, requireCheckoutFields } from "./validation.js";
-import { sendOrderReadyEmail, sendOrderSubmittedEmails } from "./email.js";
+import { sendOrderPickedUpEmail, sendOrderReadyEmail, sendOrderSubmittedEmails } from "./email.js";
 
 const app = express();
 const adminPassword = process.env.ADMIN_PASSWORD || "change-me";
@@ -466,7 +466,7 @@ app.post("/admin/products/delete", requireCsrf, requireAdmin, (req, res) => {
 });
 
 app.post("/admin/orders", requireCsrf, requireAdmin, async (req, res) => {
-  const status = ["requested", "ready", "picked_up", "paid", "cancelled", "no_show"].includes(req.body.status)
+  const status = ["requested", "ready", "picked_up", "cancelled", "no_show"].includes(req.body.status)
     ? req.body.status
     : null;
   if (!status) {
@@ -484,6 +484,16 @@ app.post("/admin/orders", requireCsrf, requireAdmin, async (req, res) => {
     } catch (emailError) {
       console.error("Failed to send ready-for-pickup email:", emailError);
       setFlash(res, "error", "Order updated, but the ready-for-pickup email failed.");
+      return res.redirect("/admin/orders");
+    }
+  }
+
+  if (status === "picked_up" && previousOrder?.status !== "picked_up" && updatedOrder) {
+    try {
+      await sendOrderPickedUpEmail(updatedOrder);
+    } catch (emailError) {
+      console.error("Failed to send picked-up thank-you email:", emailError);
+      setFlash(res, "error", "Order updated, but the thank-you email failed.");
       return res.redirect("/admin/orders");
     }
   }

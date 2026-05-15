@@ -34,10 +34,6 @@ External services are acceptable when they solve a real store need with minimal 
    The goal is to define status transitions and decision points clearly enough
    that the app can stay simple.
 
-   Review whether `picked_up` and `paid` should remain separate admin columns.
-   For pay-at-pickup sales they may be effectively simultaneous, so the simpler
-   operator state may be `completed` with optional payment metadata, or a single
-   "Mark picked up and paid" action.
 
 2. Decide whether customer accounts are worth the added complexity.
    The original plan avoided accounts, but repeat customers may make lightweight
@@ -57,7 +53,7 @@ External services are acceptable when they solve a real store need with minimal 
    pickup.
    Make order status language clear enough that unpaid orders are not mistaken
    for completed paid sales.
-   Add admin workflow for pickup requested, ready, picked up, paid, cancelled,
+   Add admin workflow for pickup requested, ready, picked up/paid, cancelled,
    no-show, and returned-to-stock states.
 
 2. Add production-safe admin auth.

@@ -1,6 +1,6 @@
 import { escapeHtml, formatCurrency } from "./utils.js";
 
-const assetVersion = process.env.ASSET_VERSION || "2026-04-17-1";
+const assetVersion = process.env.ASSET_VERSION || "2026-05-15-1";
 
 function nav(currentPath, cartCount, headerSearch = "") {
   const links = [
@@ -42,7 +42,16 @@ function flashHtml(flash) {
   return `<div class="flash ${escapeHtml(flash.type)}">${escapeHtml(flash.message)}</div>`;
 }
 
-export function layout({ title, currentPath, cartCount, content, flash = null, headerSearch = "" }) {
+export function layout({
+  title,
+  currentPath,
+  cartCount,
+  content,
+  flash = null,
+  headerSearch = "",
+  bodyClass = "",
+  mainClass = "wrap stack",
+}) {
   return `<!doctype html>
   <html lang="en">
     <head>
@@ -52,9 +61,9 @@ export function layout({ title, currentPath, cartCount, content, flash = null, h
       <link rel="stylesheet" href="/styles.css?v=${assetVersion}">
       <script src="/app.js?v=${assetVersion}" defer></script>
     </head>
-    <body>
+    <body${bodyClass ? ` class="${escapeHtml(bodyClass)}"` : ""}>
       ${nav(currentPath, cartCount, headerSearch)}
-      <main class="wrap stack">
+      <main class="${escapeHtml(mainClass)}">
         ${flashHtml(flash)}
         ${content}
       </main>
@@ -183,8 +192,7 @@ const pickupNotice = `
 const orderStatusLabels = {
   requested: "Pickup requested",
   ready: "Ready for pickup",
-  picked_up: "Picked up",
-  paid: "Paid",
+  picked_up: "Picked up/paid",
   cancelled: "Cancelled",
   no_show: "No-show",
 };
@@ -469,12 +477,23 @@ function adminSectionNav(currentSection) {
   `;
 }
 
-function adminPageFrame({ title, cartCount, flash, csrfToken, currentSection, content }) {
+function adminPageFrame({
+  title,
+  cartCount,
+  flash,
+  csrfToken,
+  currentSection,
+  content,
+  bodyClass = "",
+  mainClass = "wrap stack",
+}) {
   return layout({
     title,
     currentPath: "/admin",
     cartCount,
     flash,
+    bodyClass,
+    mainClass,
     content: `
       <section class="section-heading">
         <div class="stack-tight">
@@ -649,7 +668,7 @@ export function adminCatalogPage({
 }
 
 export function adminOrdersPage({ cartCount, orders, archivedOrders, flash, csrfToken }) {
-  const statuses = ["requested", "ready", "picked_up", "paid", "cancelled", "no_show"];
+  const statuses = ["requested", "ready", "picked_up", "cancelled", "no_show"];
   const labels = orderStatusLabels;
 
   return adminPageFrame({
@@ -658,6 +677,8 @@ export function adminOrdersPage({ cartCount, orders, archivedOrders, flash, csrf
     flash,
     csrfToken,
     currentSection: "/admin/orders",
+    bodyClass: "admin-orders-body",
+    mainClass: "admin-orders-main stack",
     content: `
       <section class="stack-tight orders-board-page">
         <div class="section-heading">
@@ -670,10 +691,10 @@ export function adminOrdersPage({ cartCount, orders, archivedOrders, flash, csrf
             .map((status) => {
               const bucket = orders.filter((order) => order.status === status);
               return `
-                <section class="orders-col">
+                <section class="orders-col status-${escapeHtml(status)}">
                   <header class="orders-col-header">
                     <h3>${labels[status]}</h3>
-                    <span>${bucket.length}</span>
+                    <span class="orders-col-count">${bucket.length}</span>
                   </header>
                   <div class="orders-list">
                     ${
@@ -682,7 +703,7 @@ export function adminOrdersPage({ cartCount, orders, archivedOrders, flash, csrf
                         : bucket
                             .map(
                               (order) => `
-                                <article class="orders-card">
+                                <article class="orders-card status-${escapeHtml(order.status)}">
                                   <div class="orders-card-header">
                                     <div>
                                       <strong>${escapeHtml(order.order_number)}</strong>
@@ -733,7 +754,7 @@ export function adminOrdersPage({ cartCount, orders, archivedOrders, flash, csrf
                                         )
                                         .join("")}
                                     </select>
-                                    <button type="submit" class="orders-action-button">Move</button>
+                                    <button type="submit" class="orders-action-button">Update</button>
                                   </form>
                                   ${
                                     order.status === "cancelled" || order.status === "no_show"

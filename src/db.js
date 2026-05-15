@@ -129,7 +129,7 @@ function applySchema(db) {
       full_name TEXT NOT NULL,
       shipping_address TEXT NOT NULL,
       postal_code TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'requested' CHECK (status IN ('requested', 'ready', 'picked_up', 'paid', 'cancelled', 'no_show')),
+      status TEXT NOT NULL DEFAULT 'requested' CHECK (status IN ('requested', 'ready', 'picked_up', 'cancelled', 'no_show')),
       archived_at TEXT,
       subtotal_cents INTEGER NOT NULL CHECK (subtotal_cents >= 0),
       shipping_cents INTEGER NOT NULL CHECK (shipping_cents >= 0),
@@ -174,7 +174,12 @@ function migrateOrderStatuses(db) {
     .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'orders'")
     .get();
 
-  if (!ordersSchema?.sql || !ordersSchema.sql.includes("'packed'") || !ordersSchema.sql.includes("'shipped'")) {
+  if (
+    !ordersSchema?.sql ||
+    (!ordersSchema.sql.includes("'packed'") &&
+      !ordersSchema.sql.includes("'shipped'") &&
+      !ordersSchema.sql.includes("'paid'"))
+  ) {
     return;
   }
 
@@ -192,7 +197,7 @@ function migrateOrderStatuses(db) {
       full_name TEXT NOT NULL,
       shipping_address TEXT NOT NULL,
       postal_code TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'requested' CHECK (status IN ('requested', 'ready', 'picked_up', 'paid', 'cancelled', 'no_show')),
+      status TEXT NOT NULL DEFAULT 'requested' CHECK (status IN ('requested', 'ready', 'picked_up', 'cancelled', 'no_show')),
       archived_at TEXT,
       subtotal_cents INTEGER NOT NULL CHECK (subtotal_cents >= 0),
       shipping_cents INTEGER NOT NULL CHECK (shipping_cents >= 0),
@@ -224,7 +229,7 @@ function migrateOrderStatuses(db) {
       shipping_address,
       postal_code,
       CASE status
-        WHEN 'paid' THEN 'requested'
+        WHEN 'paid' THEN 'picked_up'
         WHEN 'packed' THEN 'ready'
         WHEN 'shipped' THEN 'picked_up'
         ELSE status
