@@ -80,10 +80,17 @@ External services are acceptable when they solve a real store need with minimal 
    text notifications.
 
 6. Finish public deployment setup.
-   Replace placeholder domain in `Caddyfile`.
-   Point DNS to the server.
-   Confirm HTTPS, secure cookies, and service restart flow.
-   Compare free/low-cost hosting options for a small Node + SQLite app.
+   Current preferred path is Hetzner Cloud for a small Node + SQLite app.
+   Choose Cloud, not Web Hosting, Managed Server, Dedicated Server, Storage Box,
+   Object Storage, Load Balancer, or Server Auction.
+   Start with Shared Resources -> Regular Performance -> smallest US instance,
+   likely `CPX11`, in Ashburn, Virginia.
+   Use Ubuntu 24.04 LTS or Debian 12, public IPv4 plus IPv6, and a firewall
+   allowing `22`, `80`, and `443`.
+   Use Caddy for HTTPS and reverse proxy to the Node app.
+   Replace placeholder domain in `Caddyfile`, point DNS to the server, confirm
+   HTTPS, secure cookies, and service restart flow.
+   Enable backups once the store matters operationally.
 
 ## Admin Improvements
 
@@ -140,7 +147,12 @@ External services are acceptable when they solve a real store need with minimal 
 
 ## Operations
 
-1. Add automated tests for critical paths.
+1. Create a deployment runbook for the Hetzner path.
+   Include server creation choices, SSH setup, firewall, system packages, Git
+   deploy, `.env` creation, systemd service, Caddy config, DNS, HTTPS check,
+   backup location, and rollback/restart commands.
+
+2. Add automated tests for critical paths.
    Basket add/update/remove
    pickup order submission
    order lookup
@@ -148,15 +160,15 @@ External services are acceptable when they solve a real store need with minimal 
    admin order transitions
    archive/restore flow
 
-2. Add backup and restore verification.
+3. Add backup and restore verification.
    Backup exists already.
    Need a documented restore drill and periodic verification.
 
-3. Add better operational logging.
+4. Add better operational logging.
    Keep request logging simple.
    Add clearer error logging for pickup-order failures.
 
-4. Add a short release checklist.
+5. Add a short release checklist.
    Restart service
    verify homepage
    verify pickup order submission
