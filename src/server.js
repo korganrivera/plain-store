@@ -12,6 +12,7 @@ import {
   getProductById,
   getProductBySlug,
   listCategories,
+  listStorefrontCategories,
   listOrders,
   listProducts,
   lookupOrder,
@@ -42,6 +43,7 @@ import {
   setCookie,
 } from "./utils.js";
 import { parsePositiveInt, requireAdminProductFields, requireCheckoutFields } from "./validation.js";
+import { sendOrderReadyEmail, sendOrderSubmittedEmails } from "./email.js";
 
 const app = express();
 const adminPassword = process.env.ADMIN_PASSWORD || "change-me";
@@ -150,7 +152,7 @@ function requireAdmin(req, res, next) {
 
 app.get("/", (req, res) => {
   const html = homePage({
-    categories: listCategories(),
+    categories: listStorefrontCategories(),
     products: listProducts(),
     search: "",
     cartCount: cartCount(req),
@@ -162,7 +164,7 @@ app.get("/", (req, res) => {
 app.get("/search", (req, res) => {
   const search = plainText(req.query.q, 80);
   const html = homePage({
-    categories: listCategories(),
+    categories: listStorefrontCategories(),
     products: listProducts({ search }),
     search,
     cartCount: cartCount(req),
@@ -211,7 +213,7 @@ app.post("/cart/add", requireCsrf, (req, res) => {
   }
 
   saveCart(res, nextCart);
-  setFlash(res, "success", `${product.name} added to cart.`);
+  setFlash(res, "success", `${product.name} added to basket.`);
   res.redirect("/cart");
 });
 
@@ -250,7 +252,7 @@ app.post("/cart/remove", requireCsrf, (req, res) => {
 app.get("/checkout", (req, res) => {
   const { items, totals } = hydrateCart(req);
   if (items.length === 0) {
-    setFlash(res, "error", "Your cart is empty.");
+    setFlash(res, "error", "Your basket is empty.");
     return res.redirect("/cart");
   }
   res.send(
@@ -266,10 +268,10 @@ app.get("/checkout", (req, res) => {
   );
 });
 
-app.post("/checkout", requireCsrf, (req, res) => {
+app.post("/checkout", requireCsrf, async (req, res) => {
   const { items, totals } = hydrateCart(req);
   if (items.length === 0) {
-    setFlash(res, "error", "Your cart is empty.");
+    setFlash(res, "error", "Your basket is empty.");
     return res.redirect("/cart");
   }
   const validated = requireCheckoutFields(req.body);
@@ -292,6 +294,11 @@ app.post("/checkout", requireCsrf, (req, res) => {
       ...validated.value,
       items: items.map((item) => ({ productId: item.id, quantity: item.quantity })),
     });
+    try {
+      await sendOrderSubmittedEmails(order);
+    } catch (emailError) {
+      console.error("Failed to send order-submitted email:", emailError);
+    }
     clearCookie(res, "cart", { secure: forceSecureCookies || req.secure });
     return res.redirect(`/order/${order.order_number}`);
   } catch (error) {
@@ -335,7 +342,7 @@ app.post("/order-lookup", requireCsrf, (req, res) => {
       }),
     );
   }
-  res.send(orderPage({ order, cartCount: cartCount(req), title: "Order Status", flash: req.flash }));
+  res.send(orderPage({ order, cartCount: cartCount(req), title: "Pickup Order Status", flash: req.flash }));
 });
 
 app.get("/admin", requireAdmin, (req, res) => {
@@ -458,15 +465,29 @@ app.post("/admin/products/delete", requireCsrf, requireAdmin, (req, res) => {
   res.redirect("/admin/catalog");
 });
 
-app.post("/admin/orders", requireCsrf, requireAdmin, (req, res) => {
-  const status = ["paid", "packed", "shipped", "cancelled"].includes(req.body.status)
+app.post("/admin/orders", requireCsrf, requireAdmin, async (req, res) => {
+  const status = ["requested", "ready", "picked_up", "paid", "cancelled", "no_show"].includes(req.body.status)
     ? req.body.status
     : null;
   if (!status) {
     setFlash(res, "error", "Invalid order status.");
     return res.redirect("/admin/orders");
   }
-  updateOrderStatus(plainText(req.body.orderNumber, 20), status);
+  const orderNumber = plainText(req.body.orderNumber, 20);
+  const previousOrder = getOrderByNumber(orderNumber);
+  updateOrderStatus(orderNumber, status);
+  const updatedOrder = getOrderByNumber(orderNumber);
+
+  if (status === "ready" && previousOrder?.status !== "ready" && updatedOrder) {
+    try {
+      await sendOrderReadyEmail(updatedOrder);
+    } catch (emailError) {
+      console.error("Failed to send ready-for-pickup email:", emailError);
+      setFlash(res, "error", "Order updated, but the ready-for-pickup email failed.");
+      return res.redirect("/admin/orders");
+    }
+  }
+
   setFlash(res, "success", "Order updated.");
   res.redirect("/admin/orders");
 });

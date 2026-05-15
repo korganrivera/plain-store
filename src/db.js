@@ -129,7 +129,7 @@ function applySchema(db) {
       full_name TEXT NOT NULL,
       shipping_address TEXT NOT NULL,
       postal_code TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'paid' CHECK (status IN ('paid', 'packed', 'shipped', 'cancelled')),
+      status TEXT NOT NULL DEFAULT 'requested' CHECK (status IN ('requested', 'ready', 'picked_up', 'paid', 'cancelled', 'no_show')),
       archived_at TEXT,
       subtotal_cents INTEGER NOT NULL CHECK (subtotal_cents >= 0),
       shipping_cents INTEGER NOT NULL CHECK (shipping_cents >= 0),
@@ -165,7 +165,91 @@ function applySchema(db) {
   if (!ordersColumns.some((column) => column.name === "archived_at")) {
     db.exec("ALTER TABLE orders ADD COLUMN archived_at TEXT;");
   }
+  migrateOrderStatuses(db);
   db.exec("CREATE INDEX IF NOT EXISTS idx_orders_archived_at ON orders(archived_at);");
+}
+
+function migrateOrderStatuses(db) {
+  const ordersSchema = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'orders'")
+    .get();
+
+  if (!ordersSchema?.sql || !ordersSchema.sql.includes("'packed'") || !ordersSchema.sql.includes("'shipped'")) {
+    return;
+  }
+
+  db.exec(`
+    PRAGMA foreign_keys = OFF;
+    BEGIN;
+
+    ALTER TABLE orders RENAME TO orders_old_status_migration;
+    ALTER TABLE order_items RENAME TO order_items_old_status_migration;
+
+    CREATE TABLE orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_number TEXT NOT NULL UNIQUE,
+      email TEXT NOT NULL,
+      full_name TEXT NOT NULL,
+      shipping_address TEXT NOT NULL,
+      postal_code TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'requested' CHECK (status IN ('requested', 'ready', 'picked_up', 'paid', 'cancelled', 'no_show')),
+      archived_at TEXT,
+      subtotal_cents INTEGER NOT NULL CHECK (subtotal_cents >= 0),
+      shipping_cents INTEGER NOT NULL CHECK (shipping_cents >= 0),
+      total_cents INTEGER NOT NULL CHECK (total_cents >= 0),
+      notes TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE order_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+      product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+      product_name TEXT NOT NULL,
+      sku TEXT NOT NULL,
+      quantity INTEGER NOT NULL CHECK (quantity > 0),
+      unit_price_cents INTEGER NOT NULL CHECK (unit_price_cents >= 0),
+      line_total_cents INTEGER NOT NULL CHECK (line_total_cents >= 0)
+    );
+
+    INSERT INTO orders (
+      id, order_number, email, full_name, shipping_address, postal_code, status,
+      archived_at, subtotal_cents, shipping_cents, total_cents, notes, created_at
+    )
+    SELECT
+      id,
+      order_number,
+      email,
+      full_name,
+      shipping_address,
+      postal_code,
+      CASE status
+        WHEN 'paid' THEN 'requested'
+        WHEN 'packed' THEN 'ready'
+        WHEN 'shipped' THEN 'picked_up'
+        ELSE status
+      END,
+      archived_at,
+      subtotal_cents,
+      shipping_cents,
+      total_cents,
+      notes,
+      created_at
+    FROM orders_old_status_migration;
+
+    INSERT INTO order_items (
+      id, order_id, product_id, product_name, sku, quantity, unit_price_cents, line_total_cents
+    )
+    SELECT
+      id, order_id, product_id, product_name, sku, quantity, unit_price_cents, line_total_cents
+    FROM order_items_old_status_migration;
+
+    DROP TABLE order_items_old_status_migration;
+    DROP TABLE orders_old_status_migration;
+
+    COMMIT;
+    PRAGMA foreign_keys = ON;
+  `);
 }
 
 ensureDataDir();

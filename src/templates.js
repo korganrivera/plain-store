@@ -4,7 +4,7 @@ const assetVersion = process.env.ASSET_VERSION || "2026-04-17-1";
 
 function nav(currentPath, cartCount, headerSearch = "") {
   const links = [
-    ['/order-lookup', 'Order Lookup'],
+    ['/order-lookup', 'Check Pickup Order'],
   ];
   return `
     <header class="site-header">
@@ -18,7 +18,7 @@ function nav(currentPath, cartCount, headerSearch = "") {
                 `<a href="${href}"${currentPath === href ? ' aria-current="page"' : ""}>${label}</a>`,
             )
             .join("")}
-          <a href="/cart"${currentPath === "/cart" ? ' aria-current="page"' : ""}>Cart (${cartCount})</a>
+          <a href="/cart"${currentPath === "/cart" ? ' aria-current="page"' : ""}>Basket (${cartCount})</a>
         </nav>
       </div>
     </header>
@@ -174,6 +174,45 @@ function productGrid(products) {
   `;
 }
 
+const pickupNotice = `
+  <p class="pickup-note">
+    Local pickup only. No online payment; pay when you pick up.
+  </p>
+`;
+
+const orderStatusLabels = {
+  requested: "Pickup requested",
+  ready: "Ready for pickup",
+  picked_up: "Picked up",
+  paid: "Paid",
+  cancelled: "Cancelled",
+  no_show: "No-show",
+};
+
+function orderStatusLabel(status) {
+  return orderStatusLabels[status] || status;
+}
+
+function orderConfirmationMessage(order) {
+  if (order.status !== "requested") {
+    return `
+      <p class="pickup-note">
+        This pickup order is currently marked ${escapeHtml(orderStatusLabel(order.status))}.
+      </p>
+    `;
+  }
+
+  return `
+    <div class="pickup-note">
+      <strong>Thanks for your order. It was submitted successfully.</strong>
+      <p>
+        No online payment was taken. We will confirm the order and pickup details,
+        then contact you again when it is ready for pickup. Pay when you pick up.
+      </p>
+    </div>
+  `;
+}
+
 export function productPage({ product, cartCount, csrfToken, flash = null }) {
   return layout({
     title: product.name,
@@ -190,6 +229,7 @@ export function productPage({ product, cartCount, csrfToken, flash = null }) {
           <h1>${escapeHtml(product.name)}</h1>
           <p class="muted">${escapeHtml(product.description)}</p>
           <p class="price">${formatCurrency(product.price_cents)}</p>
+          ${pickupNotice}
           <p>${product.inventory_count} available</p>
           <form action="/cart/add" method="post" class="cart-form">
             <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
@@ -198,7 +238,7 @@ export function productPage({ product, cartCount, csrfToken, flash = null }) {
               Quantity
               <input type="number" name="quantity" min="1" max="${Math.max(product.inventory_count, 1)}" value="1">
             </label>
-            <button type="submit"${product.inventory_count === 0 ? " disabled" : ""}>Add to cart</button>
+            <button type="submit"${product.inventory_count === 0 ? " disabled" : ""}>Add to basket</button>
           </form>
           <p class="muted product-sku">SKU ${escapeHtml(product.sku)}</p>
         </div>
@@ -209,18 +249,18 @@ export function productPage({ product, cartCount, csrfToken, flash = null }) {
 
 export function cartPage({ items, totals, cartCount, csrfToken, flash = null }) {
   return layout({
-    title: "Cart",
+    title: "Basket",
     currentPath: "/cart",
     cartCount,
     flash,
     content: `
       <section class="section-heading">
-        <h1>Cart</h1>
+        <h1>Basket</h1>
         <span>${cartCount} items</span>
       </section>
       ${
         items.length === 0
-          ? '<p class="empty-state">Your cart is empty.</p>'
+          ? '<p class="empty-state">Your basket is empty.</p>'
           : `
             <div class="cart-layout">
               <div class="table-wrap">
@@ -262,12 +302,12 @@ export function cartPage({ items, totals, cartCount, csrfToken, flash = null }) 
               </div>
               <aside class="summary-card">
                 <h2>Summary</h2>
+                ${pickupNotice}
                 <dl class="summary-list">
                   <div><dt>Subtotal</dt><dd>${formatCurrency(totals.subtotalCents)}</dd></div>
-                  <div><dt>Shipping</dt><dd>${formatCurrency(totals.shippingCents)}</dd></div>
                   <div><dt>Total</dt><dd>${formatCurrency(totals.totalCents)}</dd></div>
                 </dl>
-                <a href="/checkout" class="button-primary">Checkout</a>
+                <a href="/checkout" class="button-primary">Continue to pickup details</a>
               </aside>
             </div>
           `
@@ -278,38 +318,33 @@ export function cartPage({ items, totals, cartCount, csrfToken, flash = null }) 
 
 export function checkoutPage({ items, totals, values, error, cartCount, csrfToken, flash = null }) {
   return layout({
-    title: "Checkout",
+    title: "Pickup Details",
     currentPath: "",
     cartCount,
     flash: error ? { type: "error", message: error } : flash,
     content: `
       <section class="section-heading">
-        <h1>Checkout</h1>
+        <h1>Pickup details</h1>
         <span>${cartCount} items</span>
       </section>
       <div class="checkout-layout">
         <form action="/checkout" method="post" class="stack panel">
+          <p class="pickup-note">
+            Submit this pickup order to hold the items. No online payment is taken.
+            Pay when you pick up.
+          </p>
           <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
           <label>Email<input type="email" name="email" required value="${escapeHtml(values.email || "")}"></label>
           <label>Full name<input type="text" name="fullName" required value="${escapeHtml(values.fullName || "")}"></label>
-          <label>Street address<input type="text" name="addressLine1" required value="${escapeHtml(
-            values.addressLine1 || "",
+          <label>Phone <span class="muted">(optional)</span><input type="tel" name="phone" value="${escapeHtml(values.phone || "")}"></label>
+          <label>Preferred pickup time<input type="text" name="pickupWindow" required placeholder="e.g. Friday after 4, or flexible" value="${escapeHtml(
+            values.pickupWindow || "",
           )}"></label>
-          <label>Apartment, suite, etc. <span class="muted">(optional)</span><input type="text" name="addressLine2" value="${escapeHtml(
-            values.addressLine2 || "",
-          )}"></label>
-          <div class="checkout-address-grid">
-            <label>City<input type="text" name="city" required value="${escapeHtml(values.city || "")}"></label>
-            <label>State<input type="text" name="state" required value="${escapeHtml(values.state || "")}"></label>
-            <label>Postal code<input type="text" name="postalCode" required value="${escapeHtml(
-              values.postalCode || "",
-            )}"></label>
-          </div>
-          <label>Notes<input type="text" name="notes" value="${escapeHtml(values.notes || "")}"></label>
-          <button type="submit">Place order</button>
+          <label>Notes<input type="text" name="notes" placeholder="Anything we should know before pickup?" value="${escapeHtml(values.notes || "")}"></label>
+          <button type="submit">Submit pickup order</button>
         </form>
         <aside class="summary-card">
-          <h2>Order</h2>
+          <h2>Pickup order</h2>
           <ul class="summary-items">
             ${items
               .map(
@@ -322,7 +357,6 @@ export function checkoutPage({ items, totals, values, error, cartCount, csrfToke
           </ul>
           <dl class="summary-list">
             <div><dt>Subtotal</dt><dd>${formatCurrency(totals.subtotalCents)}</dd></div>
-            <div><dt>Shipping</dt><dd>${formatCurrency(totals.shippingCents)}</dd></div>
             <div><dt>Total</dt><dd>${formatCurrency(totals.totalCents)}</dd></div>
           </dl>
         </aside>
@@ -331,7 +365,7 @@ export function checkoutPage({ items, totals, values, error, cartCount, csrfToke
   });
 }
 
-export function orderPage({ order, cartCount, title = "Order Confirmation", flash = null }) {
+export function orderPage({ order, cartCount, title = "Pickup Order", flash = null }) {
   return layout({
     title,
     currentPath: "",
@@ -343,10 +377,11 @@ export function orderPage({ order, cartCount, title = "Order Confirmation", flas
           <p class="eyebrow">Order ${escapeHtml(order.order_number)}</p>
           <h1>${escapeHtml(title)}</h1>
         </div>
-        <span>${escapeHtml(order.status)}</span>
+        <span>${escapeHtml(orderStatusLabel(order.status))}</span>
       </section>
       <div class="checkout-layout">
         <section class="panel">
+          ${orderConfirmationMessage(order)}
           <h2>Items</h2>
           <ul class="summary-items">
             ${order.items
@@ -363,9 +398,10 @@ export function orderPage({ order, cartCount, title = "Order Confirmation", flas
           <h2>Summary</h2>
           <dl class="summary-list">
             <div><dt>Email</dt><dd>${escapeHtml(order.email)}</dd></div>
-            <div><dt>Ship to</dt><dd>${escapeHtml(order.full_name)}</dd></div>
+            <div><dt>Name</dt><dd>${escapeHtml(order.full_name)}</dd></div>
             <div><dt>Total</dt><dd>${formatCurrency(order.total_cents)}</dd></div>
           </dl>
+          <div class="eyebrow">Pickup details</div>
           <p class="muted preserve">${escapeHtml(order.shipping_address)}</p>
         </aside>
       </div>
@@ -375,14 +411,14 @@ export function orderPage({ order, cartCount, title = "Order Confirmation", flas
 
 export function orderLookupPage({ cartCount, csrfToken, values = {}, error = null, flash = null }) {
   return layout({
-    title: "Order Lookup",
+    title: "Check Pickup Order",
     currentPath: "/order-lookup",
     cartCount,
     flash: error ? { type: "error", message: error } : flash,
     content: `
       <section class="section-heading">
-        <h1>Order lookup</h1>
-        <p class="muted">Enter your order number and email to view order status.</p>
+        <h1>Check pickup order</h1>
+        <p class="muted">Enter your order number and email to view pickup status.</p>
       </section>
       <form action="/order-lookup" method="post" class="panel narrow-form">
         <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
@@ -390,7 +426,7 @@ export function orderLookupPage({ cartCount, csrfToken, values = {}, error = nul
           values.orderNumber || "",
         )}"></label>
         <label>Email<input type="email" name="email" required value="${escapeHtml(values.email || "")}"></label>
-        <button type="submit">Look up order</button>
+        <button type="submit">Check order</button>
       </form>
     `,
   });
@@ -489,7 +525,7 @@ export function adminCatalogPage({
                         <td>${escapeHtml(product.status)}</td>
                         <td>
                           <div class="admin-actions">
-                            <a href="/admin?product=${product.id}">Edit</a>
+                            <a href="/admin/catalog?product=${product.id}">Edit</a>
                             <form action="/admin/products/delete" method="post" data-confirm="Delete this product?">
                               <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
                               <input type="hidden" name="id" value="${product.id}">
@@ -579,7 +615,7 @@ export function adminCatalogPage({
                         <td>${escapeHtml(category.slug)}</td>
                         <td>
                           <div class="admin-actions">
-                            <a href="/admin?category=${category.id}">Edit</a>
+                            <a href="/admin/catalog?category=${category.id}">Edit</a>
                             <form action="/admin/categories/delete" method="post" data-confirm="Delete this category?">
                               <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
                               <input type="hidden" name="id" value="${category.id}">
@@ -613,13 +649,8 @@ export function adminCatalogPage({
 }
 
 export function adminOrdersPage({ cartCount, orders, archivedOrders, flash, csrfToken }) {
-  const statuses = ["paid", "packed", "shipped", "cancelled"];
-  const labels = {
-    paid: "Paid",
-    packed: "Packed",
-    shipped: "Shipped",
-    cancelled: "Cancelled",
-  };
+  const statuses = ["requested", "ready", "picked_up", "paid", "cancelled", "no_show"];
+  const labels = orderStatusLabels;
 
   return adminPageFrame({
     title: "Admin Orders",
@@ -665,10 +696,10 @@ export function adminOrdersPage({ cartCount, orders, archivedOrders, flash, csrf
                                   </div>
                                   <dl class="orders-card-summary">
                                     <div><dt>Items</dt><dd>${order.items.reduce((sum, item) => sum + item.quantity, 0)}</dd></div>
-                                    <div><dt>Postal</dt><dd>${escapeHtml(order.postal_code)}</dd></div>
+                                    <div><dt>Status</dt><dd>${escapeHtml(orderStatusLabel(order.status))}</dd></div>
                                   </dl>
                                   <div class="orders-card-block">
-                                    <div class="eyebrow">Ship to</div>
+                                    <div class="eyebrow">Pickup details</div>
                                     <p class="muted preserve">${escapeHtml(order.shipping_address)}</p>
                                   </div>
                                   <div class="orders-card-block">
@@ -705,7 +736,7 @@ export function adminOrdersPage({ cartCount, orders, archivedOrders, flash, csrf
                                     <button type="submit" class="orders-action-button">Move</button>
                                   </form>
                                   ${
-                                    order.status === "cancelled"
+                                    order.status === "cancelled" || order.status === "no_show"
                                       ? `
                                         <form action="/admin/orders/archive" method="post" class="orders-card-actions orders-card-actions-secondary">
                                           <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
@@ -748,7 +779,7 @@ export function adminOrdersPage({ cartCount, orders, archivedOrders, flash, csrf
                                 <strong>${escapeHtml(order.order_number)}</strong>
                                 <div class="muted">${escapeHtml(order.full_name)}</div>
                               </td>
-                              <td>${escapeHtml(labels[order.status] || order.status)}</td>
+                              <td>${escapeHtml(orderStatusLabel(order.status))}</td>
                               <td>${formatCurrency(order.total_cents)}</td>
                               <td>${escapeHtml(order.archived_at || "")}</td>
                               <td>

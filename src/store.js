@@ -43,6 +43,22 @@ export function listCategories() {
     .all();
 }
 
+export function listStorefrontCategories() {
+  return db
+    .prepare(`
+      SELECT c.id, c.slug, c.name, c.description
+      FROM categories c
+      WHERE EXISTS (
+        SELECT 1
+        FROM products p
+        WHERE p.category_id = c.id
+          AND p.status = 'active'
+      )
+      ORDER BY c.sort_order, c.name
+    `)
+    .all();
+}
+
 export function getCategoryBySlug(slug) {
   return db
     .prepare("SELECT id, slug, name, description FROM categories WHERE slug = ?")
@@ -154,7 +170,7 @@ export function getCartProducts(productIds) {
     .all(...productIds);
 }
 
-export function createOrder({ email, fullName, shippingAddress, postalCode, notes, items }) {
+export function createOrder({ email, fullName, pickupDetails, postalCode, notes, items }) {
   const readProduct = db.prepare(
     "SELECT id, name, sku, price_cents, inventory_count, status FROM products WHERE id = ?",
   );
@@ -163,7 +179,7 @@ export function createOrder({ email, fullName, shippingAddress, postalCode, note
       order_number, email, full_name, shipping_address, postal_code, status,
       subtotal_cents, shipping_cents, total_cents, notes
     ) VALUES (
-      @order_number, @email, @full_name, @shipping_address, @postal_code, 'paid',
+      @order_number, @email, @full_name, @shipping_address, @postal_code, 'requested',
       @subtotal_cents, @shipping_cents, @total_cents, @notes
     )
   `);
@@ -210,7 +226,7 @@ export function createOrder({ email, fullName, shippingAddress, postalCode, note
       order_number: orderNumber,
       email,
       full_name: fullName,
-      shipping_address: shippingAddress,
+      shipping_address: pickupDetails,
       postal_code: postalCode,
       subtotal_cents: subtotalCents,
       shipping_cents: shippingCents,
@@ -424,7 +440,7 @@ export function archiveOrder(orderNumber) {
   db.prepare(`
     UPDATE orders
     SET archived_at = CURRENT_TIMESTAMP
-    WHERE order_number = ? AND status = 'cancelled'
+    WHERE order_number = ? AND status IN ('cancelled', 'no_show')
   `).run(orderNumber);
 }
 

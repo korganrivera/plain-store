@@ -16,11 +16,8 @@ export function parseMoneyToCents(value) {
 export function requireCheckoutFields(body) {
   const email = plainText(body.email, 200).toLowerCase();
   const fullName = plainText(body.fullName, 120);
-  const addressLine1 = plainText(body.addressLine1, 160);
-  const addressLine2 = plainText(body.addressLine2, 160);
-  const city = plainText(body.city, 120);
-  const state = plainText(body.state, 60);
-  const postalCode = plainText(body.postalCode, 20);
+  const phone = plainText(body.phone, 40);
+  const pickupWindow = plainText(body.pickupWindow, 160);
   const notes = plainMultiline(body.notes, 500);
 
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -29,24 +26,13 @@ export function requireCheckoutFields(body) {
   if (fullName.length < 2) {
     return { error: "Enter your full name." };
   }
-  if (addressLine1.length < 5) {
-    return { error: "Enter a street address." };
-  }
-  if (city.length < 2) {
-    return { error: "Enter a city." };
-  }
-  if (state.length < 2) {
-    return { error: "Enter a state." };
-  }
-  if (postalCode.length < 3) {
-    return { error: "Enter a postal code." };
+  if (pickupWindow.length < 2) {
+    return { error: "Enter a preferred pickup time or write flexible." };
   }
 
-  const shippingAddress = [addressLine1, addressLine2, `${city}, ${state} ${postalCode}`]
-    .filter(Boolean)
-    .join("\n");
+  const pickupDetails = [`Pickup: ${pickupWindow}`, phone ? `Phone: ${phone}` : ""].filter(Boolean).join("\n");
 
-  return { value: { email, fullName, shippingAddress, postalCode, notes } };
+  return { value: { email, fullName, phone, pickupDetails, pickupWindow, postalCode: "", notes } };
 }
 
 export function requireAdminProductFields(body) {

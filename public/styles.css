@@ -366,6 +366,17 @@ select {
   font-weight: 700;
 }
 
+.pickup-note {
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--line);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.pickup-note > * + * {
+  margin-top: 0.4rem;
+}
+
 .product-sku {
   font-size: 0.85rem;
   letter-spacing: 0.02em;

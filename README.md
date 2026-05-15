@@ -1,8 +1,6 @@
 # Plain Store
 
-Minimalist, self-hosted online store MVP built as a small Node.js monolith.
-
-## Screenshot
+Minimalist, self-hosted local pickup store MVP built as a small Node.js monolith.
 
 ![Plain Store homepage](docs/plain-store-screenshot.png)
 
@@ -42,10 +40,10 @@ The first run creates `data/store.db` and seeds a small demo catalog automatical
 - `/search?q=...` simple search
 - `/c/:slug` category pages
 - `/p/:slug` product detail pages
-- `/cart` cart
-- `/checkout` checkout
-- `/order/:orderNumber` order confirmation
-- `/order-lookup` basic order lookup
+- `/cart` basket
+- `/checkout` pickup details
+- `/order/:orderNumber` pickup order confirmation
+- `/order-lookup` pickup order lookup
 - `/admin` admin dashboard
 
 ## Admin
@@ -62,6 +60,8 @@ Default local password fallback is `change-me`. Set `ADMIN_PASSWORD` in real use
 ## Operations
 
 - Data lives in `data/store.db`
+- Email uses SMTP when `SMTP_HOST` and `MAIL_FROM` are set
+- Without SMTP settings, email messages are written to `data/email_outbox/`
 - Static assets live in `public/`
 - Simple file backups: `npm run backup`
 - Health check: `/healthz`
@@ -94,11 +94,16 @@ sudo systemctl restart plain-store
 - `ADMIN_PASSWORD` should always be set in real use
 - `COOKIE_SECRET` should always be set in real use
 - `COOKIE_SECURE=true` is recommended behind HTTPS; use `false` for plain local HTTP development
+- `PUBLIC_STORE_URL` is used in order-status email links
+- `MAIL_FROM`, `STORE_OWNER_EMAIL`, and `SMTP_*` enable real email delivery
 - `.env` values are loaded automatically by the npm scripts
 
 ## Notes
 
-- No customer accounts
+- Local pickup only
+- Pay at pickup; no online payment flow
+- No shipping
+- No customer accounts by default
 - No third-party tracking
 - No SPA or frontend build pipeline
 - No external services required for the MVP

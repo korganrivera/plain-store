@@ -9,3 +9,4 @@ npm-debug.log*
 *.log
 *.pid
 .DS_Store
+HANDOFF.md
