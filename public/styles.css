@@ -636,13 +636,14 @@ select {
 }
 
 .orders-card-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.5rem;
   align-items: center;
-  flex-wrap: wrap;
 }
 
 .orders-card-actions-secondary {
+  display: flex;
   justify-content: flex-end;
 }
 
@@ -652,7 +653,8 @@ select {
 }
 
 .orders-card-actions select {
-  flex: 1;
+  grid-column: 1 / -1;
+  min-width: 0;
   padding: 0.45rem 0.55rem;
   border-radius: 6px;
   border: 1px solid var(--line);

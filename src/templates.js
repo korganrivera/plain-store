@@ -1,6 +1,6 @@
 import { escapeHtml, formatCurrency } from "./utils.js";
 
-const assetVersion = process.env.ASSET_VERSION || "2026-05-22-2";
+const assetVersion = process.env.ASSET_VERSION || "2026-05-22-3";
 
 function nav(currentPath, cartCount, headerSearch = "") {
   const links = [
