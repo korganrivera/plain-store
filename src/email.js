@@ -25,6 +25,11 @@ function storeOwnerEmail() {
   return process.env.STORE_OWNER_EMAIL || "";
 }
 
+function normalizeEmail(value) {
+  const match = String(value || "").match(/<([^>]+)>/);
+  return (match ? match[1] : value).trim().toLowerCase();
+}
+
 function publicStoreUrl() {
   return (process.env.PUBLIC_STORE_URL || "").replace(/\/+$/, "");
 }
@@ -131,9 +136,10 @@ export async function sendOrderSubmittedEmails(order) {
     text: customerText,
   });
 
-  if (storeOwnerEmail()) {
+  const ownerEmail = storeOwnerEmail();
+  if (ownerEmail && normalizeEmail(ownerEmail) !== normalizeEmail(order.email)) {
     await sendMail({
-      to: storeOwnerEmail(),
+      to: ownerEmail,
       subject: `New pickup order: ${order.order_number}`,
       text: [`New pickup order submitted.`, "", orderSummaryText(order), "", `Admin/order link: ${orderUrl(order)}`].join(
         "\n",
