@@ -114,14 +114,10 @@ External services are acceptable when they solve a real store need with minimal 
    Keep SKU secondary.
    Keep admin access visually unobtrusive.
 
-2. Add back-in-stock notifications for unavailable products.
-   When an item is out of stock, let the customer ask to be notified when it
-   returns.
-   Treat notification requests as an implicit first-in queue.
-   When stock returns, notify interested customers in request order.
-   This is especially useful when a prior reservation falls through.
-   Keep it lightweight: no customer accounts, no public queue position, and no
-   promise that notification guarantees availability.
+2. Back-in-stock notifications are now implemented for out-of-stock product
+   pages and admin inventory updates from zero to in stock.
+   Future improvement: also trigger notifications when cancelled/no-show
+   reservations release inventory back to stock.
 
 3. Add better empty and unavailable states.
    Clear out-of-stock handling

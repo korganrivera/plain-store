@@ -14,12 +14,15 @@ import {
   getProductById,
   getProductBySlug,
   isContactVerified,
+  listPendingBackInStockRequests,
   listCategories,
   listStorefrontCategories,
   listOrders,
   listProducts,
   lookupOrder,
+  markBackInStockRequestNotified,
   recordContactOrder,
+  requestBackInStockNotification,
   updateOrderStatus,
   unarchiveOrder,
   upsertCategory,
@@ -51,6 +54,7 @@ import {
 } from "./utils.js";
 import { parsePositiveInt, requireAdminProductFields, requireCheckoutFields } from "./validation.js";
 import {
+  sendBackInStockEmail,
   sendOrderConfirmationEmail,
   sendOrderPickedUpEmail,
   sendOrderReadyEmail,
@@ -181,6 +185,29 @@ function pendingOrderSummary(items, totals) {
   ].join("\n");
 }
 
+function validEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+async function sendBackInStockEmailsForProduct(product) {
+  const requests = listPendingBackInStockRequests(product.id).slice(0, product.inventory_count);
+  let sentCount = 0;
+  let failedCount = 0;
+
+  for (const request of requests) {
+    try {
+      await sendBackInStockEmail(product, request);
+      markBackInStockRequestNotified(request.id);
+      sentCount += 1;
+    } catch (emailError) {
+      console.error("Failed to send back-in-stock email:", emailError);
+      failedCount += 1;
+    }
+  }
+
+  return { sentCount, failedCount };
+}
+
 function requireCsrf(req, res, next) {
   if (req.body.csrfToken !== req.csrfToken) {
     return res.status(403).send("CSRF check failed.");
@@ -296,6 +323,48 @@ app.post("/cart/remove", requireCsrf, (req, res) => {
     req.cart.filter((item) => item.productId !== Number(req.body.productId)),
   );
   res.redirect("/cart");
+});
+
+app.post("/back-in-stock", requireCsrf, (req, res) => {
+  const productId = Number.parseInt(String(req.body.productId ?? ""), 10);
+  const email = plainText(req.body.email, 200).toLowerCase();
+  const product = Number.isInteger(productId) ? getProductById(productId) : null;
+  const redirectPath = product?.slug ? `/p/${product.slug}` : "/";
+
+  if (!product || product.status !== "active") {
+    setFlash(res, "error", "That product is unavailable.");
+    return res.redirect("/");
+  }
+  if (!validEmail(email)) {
+    setFlash(res, "error", "Enter a valid email address.");
+    return res.redirect(redirectPath);
+  }
+
+  const limits = [
+    [`back-in-stock:ip:${clientIp(req)}`, { max: 20, windowMs: hourMs }],
+    [`back-in-stock:email:${email}`, { max: 5, windowMs: hourMs }],
+  ];
+  for (const [key, options] of limits) {
+    const result = checkRateLimit(key, options);
+    if (!result.allowed) {
+      setFlash(res, "error", `Too many notification requests. Please try again in ${formatRetryAfter(result.retryAfterSeconds)}.`);
+      return res.redirect(redirectPath);
+    }
+  }
+
+  try {
+    const request = requestBackInStockNotification(product.id, email);
+    setFlash(
+      res,
+      "success",
+      request.created
+        ? "We will email you when this item is back in stock."
+        : "You are already on the notification list for this item.",
+    );
+  } catch (error) {
+    setFlash(res, "error", error.message);
+  }
+  res.redirect(redirectPath);
 });
 
 app.get("/checkout", (req, res) => {
@@ -561,15 +630,35 @@ app.post("/admin/categories/delete", requireCsrf, requireAdmin, (req, res) => {
   res.redirect("/admin/catalog");
 });
 
-app.post("/admin/products", requireCsrf, requireAdmin, (req, res) => {
+app.post("/admin/products", requireCsrf, requireAdmin, async (req, res) => {
   const validated = requireAdminProductFields(req.body);
   if (validated.error) {
     setFlash(res, "error", validated.error);
     return res.redirect("/admin/catalog");
   }
   try {
-    upsertProduct(validated.value);
-    setFlash(res, "success", "Product saved.");
+    const productId = Number.parseInt(String(validated.value.id ?? ""), 10);
+    const previousProduct = Number.isInteger(productId) ? getProductById(productId) : null;
+    const savedProductId = upsertProduct(validated.value);
+    const savedProduct = getProductById(savedProductId);
+    const cameBackInStock =
+      savedProduct?.status === "active" &&
+      savedProduct.inventory_count > 0 &&
+      previousProduct &&
+      previousProduct.inventory_count <= 0;
+
+    if (cameBackInStock) {
+      const { sentCount, failedCount } = await sendBackInStockEmailsForProduct(savedProduct);
+      if (failedCount > 0) {
+        setFlash(res, "error", `Product saved. Sent ${sentCount} back-in-stock emails; ${failedCount} failed.`);
+      } else if (sentCount > 0) {
+        setFlash(res, "success", `Product saved. Sent ${sentCount} back-in-stock emails.`);
+      } else {
+        setFlash(res, "success", "Product saved.");
+      }
+    } else {
+      setFlash(res, "success", "Product saved.");
+    }
   } catch (error) {
     setFlash(res, "error", error.message);
   }

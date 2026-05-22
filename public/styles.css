@@ -317,6 +317,7 @@ select {
 .search-form,
 .narrow-form,
 .panel,
+.notify-form label,
 .stack label {
   display: grid;
   gap: 0.5rem;

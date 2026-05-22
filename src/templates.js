@@ -1,6 +1,6 @@
 import { escapeHtml, formatCurrency } from "./utils.js";
 
-const assetVersion = process.env.ASSET_VERSION || "2026-05-22-1";
+const assetVersion = process.env.ASSET_VERSION || "2026-05-22-2";
 
 function nav(currentPath, cartCount, headerSearch = "") {
   const links = [
@@ -222,6 +222,18 @@ function orderConfirmationMessage(order) {
 }
 
 export function productPage({ product, cartCount, csrfToken, flash = null }) {
+  const backInStockForm =
+    product.inventory_count === 0
+      ? `
+          <form action="/back-in-stock" method="post" class="stack-tight notify-form">
+            <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
+            <input type="hidden" name="productId" value="${product.id}">
+            <label>Email<input type="email" name="email" required placeholder="you@example.com"></label>
+            <button type="submit" class="button-secondary">Notify me when these are back in stock</button>
+          </form>
+        `
+      : "";
+
   return layout({
     title: product.name,
     currentPath: "",
@@ -248,6 +260,7 @@ export function productPage({ product, cartCount, csrfToken, flash = null }) {
             </label>
             <button type="submit"${product.inventory_count === 0 ? " disabled" : ""}>Add to basket</button>
           </form>
+          ${backInStockForm}
           <p class="muted product-sku">SKU ${escapeHtml(product.sku)}</p>
         </div>
       </article>

@@ -106,6 +106,7 @@ sudo systemctl restart plain-store
 - Pay at pickup; no online payment flow
 - Pickup lifecycle decision flow: [docs/pay-at-pickup-flow.md](/home/korgan/store/docs/pay-at-pickup-flow.md)
 - First-time email addresses must confirm by email before inventory is reserved
+- Out-of-stock product pages support back-in-stock email notifications
 - No shipping
 - No customer accounts by default
 - No third-party tracking

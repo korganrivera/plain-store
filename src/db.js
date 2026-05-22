@@ -173,11 +173,21 @@ function applySchema(db) {
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS back_in_stock_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+      email TEXT NOT NULL,
+      requested_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      notified_at TEXT
+    );
+
     CREATE INDEX IF NOT EXISTS idx_products_category ON products(category_id);
     CREATE INDEX IF NOT EXISTS idx_products_status ON products(status);
     CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_pending_order_confirmations_email_created_at ON pending_order_confirmations(email, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_pending_order_confirmations_expires_at ON pending_order_confirmations(expires_at);
+    CREATE INDEX IF NOT EXISTS idx_back_in_stock_requests_product_pending ON back_in_stock_requests(product_id, notified_at, requested_at);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_back_in_stock_requests_open_email ON back_in_stock_requests(product_id, email) WHERE notified_at IS NULL;
 
     CREATE TRIGGER IF NOT EXISTS products_updated_at
     AFTER UPDATE ON products

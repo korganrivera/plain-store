@@ -61,6 +61,11 @@ function orderUrl(order) {
   return baseUrl ? `${baseUrl}/order/${order.order_number}` : `/order/${order.order_number}`;
 }
 
+function productUrl(product) {
+  const baseUrl = publicStoreUrl();
+  return baseUrl ? `${baseUrl}/p/${product.slug}` : `/p/${product.slug}`;
+}
+
 function confirmationUrl(token) {
   const baseUrl = publicStoreUrl();
   return baseUrl ? `${baseUrl}/order/confirm/${token}` : `/order/confirm/${token}`;
@@ -163,6 +168,22 @@ export async function sendOrderConfirmationEmail(pending) {
   return sendMail({
     to: pending.email,
     subject: `Confirm your ${storeName()} pickup request`,
+    text,
+  });
+}
+
+export async function sendBackInStockEmail(product, request) {
+  const text = [
+    `${product.name} is back in stock at ${storeName()}.`,
+    "",
+    "Availability is first-come, first-served. This message does not reserve the item.",
+    "",
+    `View item: ${productUrl(product)}`,
+  ].join("\n");
+
+  return sendMail({
+    to: request.email,
+    subject: `Back in stock: ${product.name}`,
     text,
   });
 }

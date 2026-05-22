@@ -291,6 +291,45 @@ export function recordContactOrder(email) {
   `).run(email.toLowerCase());
 }
 
+export function requestBackInStockNotification(productId, email) {
+  const product = getProductById(productId);
+  if (!product || product.status !== "active") {
+    throw new Error("That product is unavailable.");
+  }
+  if (product.inventory_count > 0) {
+    throw new Error("That product is already in stock.");
+  }
+
+  const result = db
+    .prepare(`
+      INSERT OR IGNORE INTO back_in_stock_requests (product_id, email)
+      VALUES (?, ?)
+    `)
+    .run(productId, email.toLowerCase());
+
+  return { product, created: result.changes > 0 };
+}
+
+export function listPendingBackInStockRequests(productId) {
+  return db
+    .prepare(`
+      SELECT id, product_id, email, requested_at
+      FROM back_in_stock_requests
+      WHERE product_id = ?
+        AND notified_at IS NULL
+      ORDER BY requested_at, id
+    `)
+    .all(productId);
+}
+
+export function markBackInStockRequestNotified(id) {
+  db.prepare(`
+    UPDATE back_in_stock_requests
+    SET notified_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(id);
+}
+
 export function createPendingOrderConfirmation({
   email,
   fullName,
