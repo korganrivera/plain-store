@@ -1,12 +1,13 @@
 # Plain Store Deployment Runbook
 
-Target: small Hetzner Cloud VPS running Node, SQLite, systemd, and Caddy.
+Target: small Linux VPS running Node, SQLite, systemd, and Caddy.
 
 ## 1. Server
 
-- Product: Hetzner Cloud, Shared Resources, Regular Performance.
-- Size: smallest US regular-performance instance is enough for this app.
-- Location: Ashburn, Virginia.
+- Product: a small shared Linux VPS. Vultr Cloud Compute is the current likely
+  choice.
+- Size: the smallest 1 GB RAM instance is enough to start for this app.
+- Location: choose a nearby US region with good availability.
 - OS: Ubuntu 24.04 LTS or Debian 12.
 - Firewall: allow `22`, `80`, and `443`. Do not expose `3001` publicly.
 
