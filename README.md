@@ -102,6 +102,7 @@ sudo systemctl restart plain-store
 
 - Local pickup only
 - Pay at pickup; no online payment flow
+- Pickup lifecycle decision flow: [docs/pay-at-pickup-flow.md](/home/korgan/store/docs/pay-at-pickup-flow.md)
 - No shipping
 - No customer accounts by default
 - No third-party tracking

@@ -25,24 +25,16 @@ External services are acceptable when they solve a real store need with minimal 
 
 ## Design Tasks
 
-1. Create a pay-at-pickup decision flowchart.
-   Map the full pickup-order lifecycle before implementing more submission
-   logic.
-   Include ordinary pickup, customer cancellation, owner cancellation,
-   no-shows, partial fulfillment, inventory release, returned-to-stock
-   handling, and back-in-stock queue notification.
-   The goal is to define status transitions and decision points clearly enough
-   that the app can stay simple.
+1. Pay-at-pickup decision flowchart is now documented in
+   [docs/pay-at-pickup-flow.md](/home/korgan/store/docs/pay-at-pickup-flow.md).
+   Use it as the reference before changing order status, inventory release,
+   partial fulfillment, no-show, or back-in-stock notification behavior.
 
 
-2. Decide whether customer accounts are worth the added complexity.
-   The original plan avoided accounts, but repeat customers may make lightweight
-   accounts useful.
-   Compare accountless repeat ordering against optional accounts for saved
-   contact info, pickup preferences, order history, notification management, and
-   simpler back-in-stock queues.
-   Do not add accounts just for convention; add them only if they reduce
-   friction enough to justify authentication, privacy, and support burden.
+2. Account direction is documented in
+   [docs/pay-at-pickup-flow.md](/home/korgan/store/docs/pay-at-pickup-flow.md).
+   Use a hybrid accountless model for now: no mandatory accounts, optional local
+   "remember me" prefill later, and email/order-number lookup for order status.
 
 ## Highest Priority
 
@@ -188,8 +180,8 @@ Avoid these unless there is a strong business reason:
 
 ## Suggested Next Implementation Order
 
-1. Back-in-stock notification queue
-2. Pay-at-pickup order status workflow
+1. Pay-at-pickup order status workflow
+2. Back-in-stock notification queue
 3. Better out-of-stock and cart feedback
 4. Low-stock visibility in admin
 5. Tests for the critical paths
