@@ -834,7 +834,7 @@ export function adminOrdersPage({ cartCount, orders, archivedOrders, flash, csrf
                                     ${inventoryReleaseControl(order)}
                                   </form>
                                   ${
-                                    order.status === "cancelled" || order.status === "no_show"
+                                    order.status === "picked_up" || order.status === "cancelled" || order.status === "no_show"
                                       ? `
                                         <form action="/admin/orders/archive" method="post" class="orders-card-actions orders-card-actions-secondary">
                                           <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">

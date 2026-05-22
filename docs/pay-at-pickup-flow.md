@@ -67,6 +67,7 @@ flowchart TD
 8. If the customer misses pickup, choose whether to hold it longer or mark `no_show`.
 9. When cancelled or no-show inventory is released, notify the back-in-stock queue in request order.
 10. When the customer picks up and pays, mark `picked_up`.
+11. Archive completed, cancelled, or no-show orders when they no longer need to stay on the active board.
 
 ## Inventory Rules
 

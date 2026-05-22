@@ -87,7 +87,7 @@ External services are acceptable when they solve a real store need with minimal 
 ## Admin Improvements
 
 1. Improve order board workflow.
-   Archive cancelled orders is now supported.
+   Archive completed, cancelled, and no-show orders is now supported.
    Next useful additions:
    search by order number, email, or name
    filter by status

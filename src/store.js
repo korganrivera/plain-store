@@ -669,7 +669,7 @@ export function archiveOrder(orderNumber) {
   db.prepare(`
     UPDATE orders
     SET archived_at = CURRENT_TIMESTAMP
-    WHERE order_number = ? AND status IN ('cancelled', 'no_show')
+    WHERE order_number = ? AND status IN ('picked_up', 'cancelled', 'no_show')
   `).run(orderNumber);
 }
 
