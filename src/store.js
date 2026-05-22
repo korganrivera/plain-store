@@ -1,6 +1,26 @@
 import crypto from "node:crypto";
 import { db, runInTransaction } from "./db.js";
 
+function positiveIntEnv(name, fallback) {
+  const parsed = Number.parseInt(process.env[name] || "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+const contactVerificationDays = positiveIntEnv("CONTACT_VERIFICATION_DAYS", 90);
+const orderConfirmationMinutes = positiveIntEnv("ORDER_CONFIRMATION_MINUTES", 30);
+
+function tokenHash(token) {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+function sqliteDateTimeFromNow(minutes) {
+  return new Date(Date.now() + minutes * 60 * 1000).toISOString().slice(0, 19).replace("T", " ");
+}
+
+function sqliteDateTimeToMs(value) {
+  return new Date(`${String(value).replace(" ", "T")}Z`).getTime();
+}
+
 function toSlug(value) {
   return value
     .toLowerCase()
@@ -240,6 +260,128 @@ export function createOrder({ email, fullName, pickupDetails, postalCode, notes,
     }
 
     return getOrderByNumber(orderNumber);
+  });
+}
+
+export function isContactVerified(email) {
+  const contact = db
+    .prepare("SELECT last_verified_at, last_order_at FROM verified_contacts WHERE email = ?")
+    .get(email.toLowerCase());
+  if (!contact?.last_verified_at) {
+    return false;
+  }
+
+  const verifiedAt = sqliteDateTimeToMs(contact.last_verified_at);
+  const orderedAt = contact.last_order_at ? sqliteDateTimeToMs(contact.last_order_at) : 0;
+  if (!Number.isFinite(verifiedAt)) {
+    return false;
+  }
+  const latestKnownActivity = Number.isFinite(orderedAt) ? Math.max(verifiedAt, orderedAt) : verifiedAt;
+
+  return Date.now() - latestKnownActivity <= contactVerificationDays * 24 * 60 * 60 * 1000;
+}
+
+export function recordContactOrder(email) {
+  db.prepare(`
+    INSERT INTO verified_contacts (email, first_verified_at, last_verified_at, last_order_at, order_count)
+    VALUES (?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1)
+    ON CONFLICT(email) DO UPDATE SET
+      last_order_at = CURRENT_TIMESTAMP,
+      order_count = order_count + 1
+  `).run(email.toLowerCase());
+}
+
+export function createPendingOrderConfirmation({
+  email,
+  fullName,
+  pickupDetails,
+  postalCode,
+  notes,
+  items,
+  requestIp = "",
+}) {
+  const token = crypto.randomBytes(32).toString("base64url");
+  const expiresAt = sqliteDateTimeFromNow(orderConfirmationMinutes);
+  db.prepare("DELETE FROM pending_order_confirmations WHERE expires_at < CURRENT_TIMESTAMP OR used_at IS NOT NULL").run();
+  db.prepare(`
+    INSERT INTO pending_order_confirmations (
+      token_hash, email, full_name, shipping_address, postal_code, notes,
+      items_json, request_ip, expires_at
+    ) VALUES (
+      @token_hash, @email, @full_name, @shipping_address, @postal_code, @notes,
+      @items_json, @request_ip, @expires_at
+    )
+  `).run({
+    token_hash: tokenHash(token),
+    email: email.toLowerCase(),
+    full_name: fullName,
+    shipping_address: pickupDetails,
+    postal_code: postalCode,
+    notes,
+    items_json: JSON.stringify(items),
+    request_ip: requestIp,
+    expires_at: expiresAt,
+  });
+
+  return {
+    token,
+    email: email.toLowerCase(),
+    full_name: fullName,
+    shipping_address: pickupDetails,
+    notes,
+    expires_at: expiresAt,
+    expiresMinutes: orderConfirmationMinutes,
+  };
+}
+
+export function confirmPendingOrder(token) {
+  const hash = tokenHash(token);
+  return runInTransaction(() => {
+    const pending = db
+      .prepare(`
+        SELECT id, email, full_name, shipping_address, postal_code, notes, items_json
+        FROM pending_order_confirmations
+        WHERE token_hash = ?
+          AND used_at IS NULL
+          AND expires_at > CURRENT_TIMESTAMP
+      `)
+      .get(hash);
+
+    if (!pending) {
+      throw new Error("This confirmation link is invalid or expired.");
+    }
+
+    let items;
+    try {
+      items = JSON.parse(pending.items_json);
+    } catch {
+      throw new Error("This confirmation link could not be read. Please place the pickup request again.");
+    }
+
+    if (!Array.isArray(items) || items.length === 0) {
+      throw new Error("This confirmation link has no items. Please place the pickup request again.");
+    }
+
+    const order = createOrder({
+      email: pending.email,
+      fullName: pending.full_name,
+      pickupDetails: pending.shipping_address,
+      postalCode: pending.postal_code,
+      notes: pending.notes,
+      items,
+    });
+
+    db.prepare("UPDATE pending_order_confirmations SET used_at = CURRENT_TIMESTAMP WHERE id = ?").run(pending.id);
+    db.prepare(`
+      INSERT INTO verified_contacts (email, first_verified_at, last_verified_at, last_order_at, order_count)
+      VALUES (?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1)
+      ON CONFLICT(email) DO UPDATE SET
+        last_verified_at = CURRENT_TIMESTAMP,
+        last_order_at = CURRENT_TIMESTAMP,
+        order_count = order_count + 1
+    `).run(pending.email);
+
+    return order;
   });
 }
 

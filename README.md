@@ -96,6 +96,8 @@ sudo systemctl restart plain-store
 - `COOKIE_SECURE=true` is recommended behind HTTPS; use `false` for plain local HTTP development
 - `PUBLIC_STORE_URL` is used in order-status email links
 - `MAIL_FROM`, `STORE_OWNER_EMAIL`, and `SMTP_*` enable real email delivery
+- `ORDER_CONFIRMATION_MINUTES` controls first-time email confirmation expiry; default `30`
+- `CONTACT_VERIFICATION_DAYS` controls how long a confirmed contact can reorder without another confirmation; default `90`
 - `.env` values are loaded automatically by the npm scripts
 
 ## Notes
@@ -103,6 +105,7 @@ sudo systemctl restart plain-store
 - Local pickup only
 - Pay at pickup; no online payment flow
 - Pickup lifecycle decision flow: [docs/pay-at-pickup-flow.md](/home/korgan/store/docs/pay-at-pickup-flow.md)
+- First-time email addresses must confirm by email before inventory is reserved
 - No shipping
 - No customer accounts by default
 - No third-party tracking

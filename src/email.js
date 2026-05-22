@@ -56,6 +56,11 @@ function orderUrl(order) {
   return baseUrl ? `${baseUrl}/order/${order.order_number}` : `/order/${order.order_number}`;
 }
 
+function confirmationUrl(token) {
+  const baseUrl = publicStoreUrl();
+  return baseUrl ? `${baseUrl}/order/confirm/${token}` : `/order/confirm/${token}`;
+}
+
 function orderItemsText(order) {
   return order.items
     .map(
@@ -135,6 +140,25 @@ export async function sendOrderSubmittedEmails(order) {
       ),
     });
   }
+}
+
+export async function sendOrderConfirmationEmail(pending) {
+  const text = [
+    `Please confirm your ${storeName()} pickup request.`,
+    "",
+    "No online payment has been taken. Inventory is not reserved until this email is confirmed.",
+    pending.summaryText ? `\n${pending.summaryText}` : "",
+    "",
+    `Confirm request: ${confirmationUrl(pending.token)}`,
+    "",
+    `This link expires in ${pending.expiresMinutes} minutes.`,
+  ].join("\n");
+
+  return sendMail({
+    to: pending.email,
+    subject: `Confirm your ${storeName()} pickup request`,
+    text,
+  });
 }
 
 export async function sendOrderReadyEmail(order) {

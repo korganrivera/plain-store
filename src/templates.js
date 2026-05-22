@@ -338,8 +338,8 @@ export function checkoutPage({ items, totals, values, error, cartCount, csrfToke
       <div class="checkout-layout">
         <form action="/checkout" method="post" class="stack panel">
           <p class="pickup-note">
-            Submit this pickup order to hold the items. No online payment is taken.
-            Pay when you pick up.
+            Submit pickup details to reserve these items. First-time emails must
+            confirm before inventory is reserved. No online payment is taken.
           </p>
           <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
           <label>Email<input type="email" name="email" required value="${escapeHtml(values.email || "")}"></label>
@@ -369,6 +369,49 @@ export function checkoutPage({ items, totals, values, error, cartCount, csrfToke
           </dl>
         </aside>
       </div>
+    `,
+  });
+}
+
+export function emailVerificationSentPage({ email, expiresMinutes, cartCount, flash = null }) {
+  return layout({
+    title: "Confirm Pickup Request",
+    currentPath: "",
+    cartCount,
+    flash,
+    content: `
+      <section class="section-heading">
+        <h1>Confirm your pickup request</h1>
+        <p class="muted">Check your email to finish placing this order.</p>
+      </section>
+      <section class="panel narrow-form">
+        <p class="pickup-note">
+          We sent a confirmation link to ${escapeHtml(email)}. Inventory is not
+          reserved until that link is opened.
+        </p>
+        <p class="muted">
+          The link expires in ${expiresMinutes} minutes. No online payment has
+          been taken.
+        </p>
+      </section>
+    `,
+  });
+}
+
+export function emailVerificationErrorPage({ message, cartCount, flash = null }) {
+  return layout({
+    title: "Confirmation Failed",
+    currentPath: "",
+    cartCount,
+    flash: flash || { type: "error", message },
+    content: `
+      <section class="section-heading">
+        <h1>Confirmation failed</h1>
+        <p class="muted">Please place the pickup request again if the link expired.</p>
+      </section>
+      <section class="panel narrow-form">
+        <a href="/cart" class="button-primary">Return to basket</a>
+      </section>
     `,
   });
 }

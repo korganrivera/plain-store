@@ -4,6 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 
 const dataDir = path.resolve("data");
 const dbPath = path.join(dataDir, "store.db");
+let transactionDepth = 0;
 
 function ensureDataDir() {
   fs.mkdirSync(dataDir, { recursive: true });
@@ -149,9 +150,34 @@ function applySchema(db) {
       line_total_cents INTEGER NOT NULL CHECK (line_total_cents >= 0)
     );
 
+    CREATE TABLE IF NOT EXISTS verified_contacts (
+      email TEXT PRIMARY KEY,
+      first_verified_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      last_verified_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      last_order_at TEXT,
+      order_count INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS pending_order_confirmations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      token_hash TEXT NOT NULL UNIQUE,
+      email TEXT NOT NULL,
+      full_name TEXT NOT NULL,
+      shipping_address TEXT NOT NULL,
+      postal_code TEXT NOT NULL DEFAULT '',
+      notes TEXT NOT NULL DEFAULT '',
+      items_json TEXT NOT NULL,
+      request_ip TEXT NOT NULL DEFAULT '',
+      expires_at TEXT NOT NULL,
+      used_at TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE INDEX IF NOT EXISTS idx_products_category ON products(category_id);
     CREATE INDEX IF NOT EXISTS idx_products_status ON products(status);
     CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_pending_order_confirmations_email_created_at ON pending_order_confirmations(email, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_pending_order_confirmations_expires_at ON pending_order_confirmations(expires_at);
 
     CREATE TRIGGER IF NOT EXISTS products_updated_at
     AFTER UPDATE ON products
@@ -263,13 +289,20 @@ applySchema(db);
 seedIfEmpty(db);
 
 export function runInTransaction(work) {
+  if (transactionDepth > 0) {
+    return work();
+  }
+
+  transactionDepth += 1;
   db.exec("BEGIN");
   try {
     const result = work();
     db.exec("COMMIT");
+    transactionDepth -= 1;
     return result;
   } catch (error) {
     db.exec("ROLLBACK");
+    transactionDepth -= 1;
     throw error;
   }
 }

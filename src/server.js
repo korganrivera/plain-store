@@ -3,6 +3,8 @@ import express from "express";
 import {
   createOrder,
   archiveOrder,
+  confirmPendingOrder,
+  createPendingOrderConfirmation,
   deleteCategory,
   deleteProduct,
   getCategoryById,
@@ -11,11 +13,13 @@ import {
   getOrderByNumber,
   getProductById,
   getProductBySlug,
+  isContactVerified,
   listCategories,
   listStorefrontCategories,
   listOrders,
   listProducts,
   lookupOrder,
+  recordContactOrder,
   updateOrderStatus,
   unarchiveOrder,
   upsertCategory,
@@ -28,6 +32,8 @@ import {
   cartPage,
   categoryPage,
   checkoutPage,
+  emailVerificationErrorPage,
+  emailVerificationSentPage,
   homePage,
   orderLookupPage,
   orderPage,
@@ -37,17 +43,26 @@ import {
   clearCookie,
   decodeSignedJson,
   encodeSignedJson,
+  formatCurrency,
   plainText,
   randomToken,
   readCookies,
   setCookie,
 } from "./utils.js";
 import { parsePositiveInt, requireAdminProductFields, requireCheckoutFields } from "./validation.js";
-import { sendOrderPickedUpEmail, sendOrderReadyEmail, sendOrderSubmittedEmails } from "./email.js";
+import {
+  sendOrderConfirmationEmail,
+  sendOrderPickedUpEmail,
+  sendOrderReadyEmail,
+  sendOrderSubmittedEmails,
+} from "./email.js";
+import { checkRateLimit, formatRetryAfter } from "./rate-limit.js";
 
 const app = express();
 const adminPassword = process.env.ADMIN_PASSWORD || "change-me";
 const forceSecureCookies = process.env.COOKIE_SECURE === "true";
+const hourMs = 60 * 60 * 1000;
+const dayMs = 24 * hourMs;
 
 app.set("trust proxy", true);
 app.disable("x-powered-by");
@@ -130,6 +145,40 @@ function hydrateCart(req) {
 
 function saveCart(res, items) {
   setCookie(res, "cart", encodeSignedJson(items), { secure: forceSecureCookies || res.req.secure });
+}
+
+function clientIp(req) {
+  return req.ip || req.socket.remoteAddress || "unknown";
+}
+
+function checkoutLimitError(req, email, verified) {
+  const limits = [
+    [`checkout:ip:${clientIp(req)}`, { max: 20, windowMs: hourMs }],
+    [`checkout:email:${email}`, { max: verified ? 10 : 4, windowMs: hourMs }],
+  ];
+
+  if (verified) {
+    limits.push([`order:email:${email}`, { max: 12, windowMs: dayMs }]);
+  } else {
+    limits.push([`pending:email:${email}`, { max: 3, windowMs: hourMs }]);
+  }
+
+  for (const [key, options] of limits) {
+    const result = checkRateLimit(key, options);
+    if (!result.allowed) {
+      return `Too many pickup requests. Please try again in ${formatRetryAfter(result.retryAfterSeconds)}.`;
+    }
+  }
+
+  return null;
+}
+
+function pendingOrderSummary(items, totals) {
+  return [
+    "Request summary:",
+    ...items.map((item) => `- ${item.name} x ${item.quantity}: ${formatCurrency(item.lineTotalCents)}`),
+    `Total due at pickup: ${formatCurrency(totals.totalCents)}`,
+  ].join("\n");
 }
 
 function requireCsrf(req, res, next) {
@@ -289,11 +338,64 @@ app.post("/checkout", requireCsrf, async (req, res) => {
     );
   }
 
+  const verifiedContact = isContactVerified(validated.value.email);
+  const limitError = checkoutLimitError(req, validated.value.email, verifiedContact);
+  if (limitError) {
+    return res.status(429).send(
+      checkoutPage({
+        items,
+        totals,
+        values: req.body,
+        error: limitError,
+        cartCount: cartCount(req),
+        csrfToken: req.csrfToken,
+        flash: req.flash,
+      }),
+    );
+  }
+
   try {
+    if (!verifiedContact) {
+      const pending = createPendingOrderConfirmation({
+        ...validated.value,
+        items: items.map((item) => ({ productId: item.id, quantity: item.quantity })),
+        requestIp: clientIp(req),
+      });
+      try {
+        await sendOrderConfirmationEmail({
+          ...pending,
+          summaryText: pendingOrderSummary(items, totals),
+        });
+      } catch (emailError) {
+        console.error("Failed to send order-confirmation email:", emailError);
+        return res.send(
+          checkoutPage({
+            items,
+            totals,
+            values: req.body,
+            error: "We could not send the confirmation email. Please try again.",
+            cartCount: cartCount(req),
+            csrfToken: req.csrfToken,
+            flash: req.flash,
+          }),
+        );
+      }
+      clearCookie(res, "cart", { secure: forceSecureCookies || req.secure });
+      return res.send(
+        emailVerificationSentPage({
+          email: pending.email,
+          expiresMinutes: pending.expiresMinutes,
+          cartCount: 0,
+          flash: { type: "success", message: "Check your email to confirm this pickup request." },
+        }),
+      );
+    }
+
     const order = createOrder({
       ...validated.value,
       items: items.map((item) => ({ productId: item.id, quantity: item.quantity })),
     });
+    recordContactOrder(order.email);
     try {
       await sendOrderSubmittedEmails(order);
     } catch (emailError) {
@@ -314,6 +416,31 @@ app.post("/checkout", requireCsrf, async (req, res) => {
       }),
     );
   }
+});
+
+app.get("/order/confirm/:token", async (req, res) => {
+  const token = plainText(req.params.token, 120);
+  let order;
+  try {
+    order = confirmPendingOrder(token);
+  } catch (error) {
+    return res.status(400).send(
+      emailVerificationErrorPage({
+        message: error.message,
+        cartCount: cartCount(req),
+      }),
+    );
+  }
+
+  try {
+    await sendOrderSubmittedEmails(order);
+  } catch (emailError) {
+    console.error("Failed to send order-submitted email after confirmation:", emailError);
+  }
+
+  clearCookie(res, "cart", { secure: forceSecureCookies || req.secure });
+  setFlash(res, "success", "Email confirmed. Your pickup order was submitted.");
+  res.redirect(`/order/${order.order_number}`);
 });
 
 app.get("/order/:orderNumber", (req, res) => {
