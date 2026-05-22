@@ -234,8 +234,6 @@ export async function sendOrderPickedUpEmail(order) {
     "",
     "We have marked it picked up and paid.",
     "",
-    storePickupText(),
-    "",
     orderSummaryText(order),
   ].join("\n");
 
