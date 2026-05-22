@@ -48,9 +48,9 @@ External services are acceptable when they solve a real store need with minimal 
    Add admin workflow for pickup requested, ready, picked up/paid, cancelled,
    no-show, and returned-to-stock states.
 
-2. Add production-safe admin auth.
-   Replace the single shared password with something safer for an internet-facing store.
-   Minimum acceptable path: hashed password, rate limiting, and better session handling.
+2. Production-safe admin auth baseline is implemented.
+   Public deployment should use `ADMIN_PASSWORD_HASH`, admin login rate limiting
+   is in place, and admin sessions expire after 12 hours.
 
 3. Add pickup-only handling.
    The store is for local pickup only.
@@ -134,10 +134,8 @@ External services are acceptable when they solve a real store need with minimal 
 
 ## Operations
 
-1. Create a deployment runbook for the Hetzner path.
-   Include server creation choices, SSH setup, firewall, system packages, Git
-   deploy, `.env` creation, systemd service, Caddy config, DNS, HTTPS check,
-   backup location, and rollback/restart commands.
+1. Deployment runbook for the Hetzner path is documented in
+   [docs/deployment-runbook.md](/home/korgan/store/docs/deployment-runbook.md).
 
 2. Add automated tests for critical paths.
    Basket add/update/remove
@@ -147,9 +145,8 @@ External services are acceptable when they solve a real store need with minimal 
    admin order transitions
    archive/restore flow
 
-3. Add backup and restore verification.
-   Backup exists already.
-   Need a documented restore drill and periodic verification.
+3. Backup and restore verification is documented in
+   [docs/backup-restore.md](/home/korgan/store/docs/backup-restore.md).
 
 4. Add better operational logging.
    Keep request logging simple.

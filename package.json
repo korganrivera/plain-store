@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node --import ./src/load-env.js src/server.js",
     "dev": "node --watch --import ./src/load-env.js src/server.js",
-    "backup": "node --import ./src/load-env.js src/backup.js"
+    "backup": "node --import ./src/load-env.js src/backup.js",
+    "admin:hash": "node src/admin-auth.js"
   },
   "engines": {
     "node": ">=22"

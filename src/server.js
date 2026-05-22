@@ -62,12 +62,15 @@ import {
   sendOrderSubmittedEmails,
 } from "./email.js";
 import { checkRateLimit, formatRetryAfter } from "./rate-limit.js";
+import { verifyAdminPassword, verifyPlainPassword } from "./admin-auth.js";
 
 const app = express();
 const adminPassword = process.env.ADMIN_PASSWORD || "change-me";
+const adminPasswordHash = process.env.ADMIN_PASSWORD_HASH || "";
 const forceSecureCookies = process.env.COOKIE_SECURE === "true";
 const hourMs = 60 * 60 * 1000;
 const dayMs = 24 * hourMs;
+const adminSessionSeconds = 60 * 60 * 12;
 
 app.set("trust proxy", true);
 app.disable("x-powered-by");
@@ -228,11 +231,19 @@ function requireCsrf(req, res, next) {
 }
 
 function adminSignedValue() {
-  return crypto.createHash("sha256").update(adminPassword).digest("hex");
+  return crypto.createHash("sha256").update(adminPasswordHash || adminPassword).digest("hex");
+}
+
+function verifyAdminLogin(password) {
+  if (adminPasswordHash) {
+    return verifyAdminPassword(password, adminPasswordHash);
+  }
+  return verifyPlainPassword(password, adminPassword);
 }
 
 function requireAdmin(req, res, next) {
-  if (req.adminSession?.token !== adminSignedValue()) {
+  if (req.adminSession?.token !== adminSignedValue() || req.adminSession?.expiresAt < Date.now()) {
+    clearCookie(res, "admin", { secure: forceSecureCookies || req.secure });
     return res.redirect("/admin/login");
   }
   next();
@@ -592,7 +603,18 @@ app.get("/admin/login", (req, res) => {
 });
 
 app.post("/admin/login", requireCsrf, (req, res) => {
-  if (req.body.password !== adminPassword) {
+  const limit = checkRateLimit(`admin-login:ip:${clientIp(req)}`, { max: 8, windowMs: hourMs });
+  if (!limit.allowed) {
+    return res.status(429).send(
+      adminLoginPage({
+        cartCount: cartCount(req),
+        csrfToken: req.csrfToken,
+        error: `Too many admin login attempts. Please try again in ${formatRetryAfter(limit.retryAfterSeconds)}.`,
+      }),
+    );
+  }
+
+  if (!verifyAdminLogin(req.body.password || "")) {
     return res.send(
       adminLoginPage({
         cartCount: cartCount(req),
@@ -601,7 +623,8 @@ app.post("/admin/login", requireCsrf, (req, res) => {
       }),
     );
   }
-  setCookie(res, "admin", encodeSignedJson({ token: adminSignedValue() }), {
+  setCookie(res, "admin", encodeSignedJson({ token: adminSignedValue(), expiresAt: Date.now() + adminSessionSeconds * 1000 }), {
+    maxAge: adminSessionSeconds,
     secure: forceSecureCookies || req.secure,
   });
   res.redirect("/admin/catalog");

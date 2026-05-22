@@ -91,7 +91,8 @@ sudo systemctl restart plain-store
 ## Environment
 
 - `PORT` defaults to `3001`
-- `ADMIN_PASSWORD` should always be set in real use
+- `ADMIN_PASSWORD_HASH` should be set for public deployment; generate with `npm run admin:hash -- "your-long-admin-password"`
+- `ADMIN_PASSWORD` remains a development fallback when `ADMIN_PASSWORD_HASH` is not set
 - `COOKIE_SECRET` should always be set in real use
 - `COOKIE_SECURE=true` is recommended behind HTTPS; use `false` for plain local HTTP development
 - `PUBLIC_STORE_URL` is used in order-status email links
@@ -100,6 +101,11 @@ sudo systemctl restart plain-store
 - `ORDER_CONFIRMATION_MINUTES` controls first-time email confirmation expiry; default `30`
 - `CONTACT_VERIFICATION_DAYS` controls how long a confirmed contact can reorder without another confirmation; default `90`
 - `.env` values are loaded automatically by the npm scripts
+
+## Deployment
+
+A Hetzner Cloud deployment runbook is available at [docs/deployment-runbook.md](/home/korgan/store/docs/deployment-runbook.md).
+Backup and restore notes are available at [docs/backup-restore.md](/home/korgan/store/docs/backup-restore.md).
 
 ## Notes
 
