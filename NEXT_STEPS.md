@@ -54,9 +54,9 @@ External services are acceptable when they solve a real store need with minimal 
 
 3. Add pickup-only handling.
    The store is for local pickup only.
-   Add clear pickup instructions, optional pickup windows, owner-facing order
-   prep cues, and pickup-location text in confirmation and ready-for-pickup
-   messages.
+   Pickup location and instructions are now included in order emails via
+   `PICKUP_LOCATION` and `PICKUP_INSTRUCTIONS`.
+   Future improvement: optional pickup windows and owner-facing order prep cues.
 
 4. Configure real SMTP delivery.
    Order-submitted and ready-for-pickup emails are wired.

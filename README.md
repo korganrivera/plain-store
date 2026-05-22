@@ -95,6 +95,7 @@ sudo systemctl restart plain-store
 - `COOKIE_SECRET` should always be set in real use
 - `COOKIE_SECURE=true` is recommended behind HTTPS; use `false` for plain local HTTP development
 - `PUBLIC_STORE_URL` is used in order-status email links
+- `PICKUP_LOCATION` and `PICKUP_INSTRUCTIONS` are included in pickup-order emails
 - `MAIL_FROM`, `STORE_OWNER_EMAIL`, and `SMTP_*` enable real email delivery
 - `ORDER_CONFIRMATION_MINUTES` controls first-time email confirmation expiry; default `30`
 - `CONTACT_VERIFICATION_DAYS` controls how long a confirmed contact can reorder without another confirmation; default `90`

@@ -34,6 +34,14 @@ function publicStoreUrl() {
   return (process.env.PUBLIC_STORE_URL || "").replace(/\/+$/, "");
 }
 
+function pickupLocation() {
+  return process.env.PICKUP_LOCATION || "Pickup location will be confirmed before pickup.";
+}
+
+function pickupInstructions() {
+  return process.env.PICKUP_INSTRUCTIONS || "Pickup timing will be coordinated with your order.";
+}
+
 function configuredForSmtp() {
   return Boolean(process.env.SMTP_HOST && process.env.MAIL_FROM);
 }
@@ -97,6 +105,10 @@ function orderSummaryText(order) {
     .join("\n");
 }
 
+function storePickupText() {
+  return ["Pickup location:", pickupLocation(), "", "Pickup instructions:", pickupInstructions()].join("\n");
+}
+
 async function writeOutbox(message) {
   fs.mkdirSync(outboxDir, { recursive: true });
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -132,6 +144,8 @@ export async function sendOrderSubmittedEmails(order) {
     "",
     orderSummaryText(order),
     "",
+    storePickupText(),
+    "",
     `Check status: ${orderUrl(order)}`,
   ].join("\n");
 
@@ -146,9 +160,15 @@ export async function sendOrderSubmittedEmails(order) {
     await sendMail({
       to: ownerEmail,
       subject: `New pickup order: ${order.order_number}`,
-      text: [`New pickup order submitted.`, "", orderSummaryText(order), "", `Admin/order link: ${orderUrl(order)}`].join(
-        "\n",
-      ),
+      text: [
+        `New pickup order submitted.`,
+        "",
+        orderSummaryText(order),
+        "",
+        storePickupText(),
+        "",
+        `Admin/order link: ${orderUrl(order)}`,
+      ].join("\n"),
     });
   }
 }
@@ -194,6 +214,8 @@ export async function sendOrderReadyEmail(order) {
     "",
     "No online payment was taken. Pay when you pick up.",
     "",
+    storePickupText(),
+    "",
     orderSummaryText(order),
     "",
     `Check status: ${orderUrl(order)}`,
@@ -211,6 +233,8 @@ export async function sendOrderPickedUpEmail(order) {
     `Thanks again for your order from ${storeName()}.`,
     "",
     "We have marked it picked up and paid.",
+    "",
+    storePickupText(),
     "",
     orderSummaryText(order),
   ].join("\n");
