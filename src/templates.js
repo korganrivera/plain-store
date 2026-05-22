@@ -1,6 +1,6 @@
 import { escapeHtml, formatCurrency } from "./utils.js";
 
-const assetVersion = process.env.ASSET_VERSION || "2026-05-22-4";
+const assetVersion = process.env.ASSET_VERSION || "2026-05-22-5";
 
 function nav(currentPath, cartCount, headerSearch = "") {
   const links = [
@@ -213,6 +213,110 @@ function inventoryReleaseControl(order) {
       <input type="checkbox" name="returnInventory" checked>
       <span>Return items to stock if cancelled/no-show</span>
     </label>
+  `;
+}
+
+function orderItemCount(order) {
+  return order.items.reduce((sum, item) => sum + item.quantity, 0);
+}
+
+function orderItemsList(order) {
+  return order.items
+    .map(
+      (item) =>
+        `<li><span>${escapeHtml(item.product_name)} x ${item.quantity}</span><strong>${formatCurrency(
+          item.line_total_cents,
+        )}</strong></li>`,
+    )
+    .join("");
+}
+
+function orderStatusOptions(statuses, labels, currentStatus) {
+  return statuses
+    .map(
+      (option) =>
+        `<option value="${option}"${option === currentStatus ? " selected" : ""}>${labels[option]}</option>`,
+    )
+    .join("");
+}
+
+function orderArchiveForm(order, csrfToken) {
+  if (!(order.status === "picked_up" || order.status === "cancelled" || order.status === "no_show")) {
+    return "";
+  }
+
+  return `
+    <form action="/admin/orders/archive" method="post" class="orders-card-actions orders-card-actions-secondary">
+      <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
+      <input type="hidden" name="orderNumber" value="${escapeHtml(order.order_number)}">
+      <button type="submit" class="button-link">Archive</button>
+    </form>
+  `;
+}
+
+function orderCard(order) {
+  return `
+    <button type="button" class="orders-card status-${escapeHtml(order.status)}" data-order-target="${order.id}">
+      <span class="orders-card-header">
+        <span>
+          <strong>${escapeHtml(order.order_number)}</strong>
+          <span class="muted">${escapeHtml(order.full_name)}</span>
+        </span>
+        <span class="orders-card-pill">${formatCurrency(order.total_cents)}</span>
+      </span>
+      <span class="orders-card-summary compact">
+        <span>${orderItemCount(order)} item${orderItemCount(order) === 1 ? "" : "s"}</span>
+        ${order.inventory_released_at ? "<span>Inventory returned</span>" : ""}
+      </span>
+    </button>
+  `;
+}
+
+function orderDetailPanel(order, statuses, labels, csrfToken) {
+  return `
+    <article class="order-detail-panel" data-order-detail="${order.id}" hidden>
+      <div class="order-detail-heading">
+        <p class="eyebrow">Order ${escapeHtml(order.order_number)}</p>
+        <h3>${escapeHtml(order.full_name)}</h3>
+        <span class="orders-card-pill">${formatCurrency(order.total_cents)}</span>
+      </div>
+      <dl class="orders-detail-list">
+        <div><dt>Status</dt><dd>${escapeHtml(orderStatusLabel(order.status))}</dd></div>
+        <div><dt>Email</dt><dd>${escapeHtml(order.email)}</dd></div>
+        <div><dt>Created</dt><dd>${escapeHtml(order.created_at)}</dd></div>
+        <div><dt>Items</dt><dd>${orderItemCount(order)}</dd></div>
+        ${
+          order.inventory_released_at
+            ? `<div><dt>Inventory</dt><dd>Returned ${escapeHtml(order.inventory_released_at)}</dd></div>`
+            : ""
+        }
+      </dl>
+      <section class="orders-card-block">
+        <div class="eyebrow">Pickup details</div>
+        <p class="muted preserve">${escapeHtml(order.shipping_address)}</p>
+      </section>
+      <section class="orders-card-block">
+        <div class="eyebrow">Items</div>
+        <ul class="summary-items compact-list">${orderItemsList(order)}</ul>
+      </section>
+      ${
+        order.notes
+          ? `<section class="orders-card-block"><div class="eyebrow">Notes</div><p class="muted preserve">${escapeHtml(order.notes)}</p></section>`
+          : ""
+      }
+      <form action="/admin/orders" method="post" class="orders-card-actions order-detail-actions">
+        <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
+        <input type="hidden" name="orderNumber" value="${escapeHtml(order.order_number)}">
+        <label>Status
+          <select name="status" aria-label="Order status">
+            ${orderStatusOptions(statuses, labels, order.status)}
+          </select>
+        </label>
+        <button type="submit" class="orders-action-button">Update</button>
+        ${inventoryReleaseControl(order)}
+      </form>
+      ${orderArchiveForm(order, csrfToken)}
+    </article>
   `;
 }
 
@@ -771,83 +875,7 @@ export function adminOrdersPage({ cartCount, orders, archivedOrders, flash, csrf
                     ${
                       bucket.length === 0
                         ? '<p class="empty-state">No orders in this stage.</p>'
-                        : bucket
-                            .map(
-                              (order) => `
-                                <article class="orders-card status-${escapeHtml(order.status)}">
-                                  <div class="orders-card-header">
-                                    <div>
-                                      <strong>${escapeHtml(order.order_number)}</strong>
-                                      <p class="muted">${escapeHtml(order.full_name)}</p>
-                                    </div>
-                                    <span class="orders-card-pill">${formatCurrency(order.total_cents)}</span>
-                                  </div>
-                                  <div class="orders-card-meta">
-                                    <div>${escapeHtml(order.email)}</div>
-                                    <div>${escapeHtml(order.created_at)}</div>
-                                  </div>
-                                  <dl class="orders-card-summary">
-                                    <div><dt>Items</dt><dd>${order.items.reduce((sum, item) => sum + item.quantity, 0)}</dd></div>
-                                    <div><dt>Status</dt><dd>${escapeHtml(orderStatusLabel(order.status))}</dd></div>
-                                    ${
-                                      order.inventory_released_at
-                                        ? "<div><dt>Inventory</dt><dd>Returned</dd></div>"
-                                        : ""
-                                    }
-                                  </dl>
-                                  <div class="orders-card-block">
-                                    <div class="eyebrow">Pickup details</div>
-                                    <p class="muted preserve">${escapeHtml(order.shipping_address)}</p>
-                                  </div>
-                                  <div class="orders-card-block">
-                                    <div class="eyebrow">Items</div>
-                                    <ul class="summary-items compact-list">
-                                      ${order.items
-                                        .map(
-                                          (item) =>
-                                            `<li><span>${escapeHtml(item.product_name)} × ${item.quantity}</span><strong>${formatCurrency(
-                                              item.line_total_cents,
-                                            )}</strong></li>`,
-                                        )
-                                        .join("")}
-                                    </ul>
-                                  </div>
-                                  ${
-                                    order.notes
-                                      ? `<div class="orders-card-block"><div class="eyebrow">Notes</div><p class="muted preserve">${escapeHtml(order.notes)}</p></div>`
-                                      : ""
-                                  }
-                                  <form action="/admin/orders" method="post" class="orders-card-actions">
-                                    <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
-                                    <input type="hidden" name="orderNumber" value="${escapeHtml(order.order_number)}">
-                                    <select name="status" aria-label="Order status">
-                                      ${statuses
-                                        .map(
-                                          (option) =>
-                                            `<option value="${option}"${
-                                              option === order.status ? " selected" : ""
-                                            }>${labels[option]}</option>`,
-                                        )
-                                        .join("")}
-                                    </select>
-                                    <button type="submit" class="orders-action-button">Update</button>
-                                    ${inventoryReleaseControl(order)}
-                                  </form>
-                                  ${
-                                    order.status === "picked_up" || order.status === "cancelled" || order.status === "no_show"
-                                      ? `
-                                        <form action="/admin/orders/archive" method="post" class="orders-card-actions orders-card-actions-secondary">
-                                          <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
-                                          <input type="hidden" name="orderNumber" value="${escapeHtml(order.order_number)}">
-                                          <button type="submit" class="button-link">Archive</button>
-                                        </form>
-                                      `
-                                      : ""
-                                  }
-                                </article>
-                              `,
-                            )
-                            .join("")
+                        : bucket.map((order) => orderCard(order)).join("")
                     }
                   </div>
                 </section>
@@ -856,6 +884,14 @@ export function adminOrdersPage({ cartCount, orders, archivedOrders, flash, csrf
             .join("")}
         </div>
         </div>
+        <aside id="orderDetailSidebar" class="orders-detail-sidebar" role="dialog" aria-label="Order details" aria-hidden="true">
+          <button type="button" class="orders-detail-close" data-order-sidebar-close aria-label="Close order details">x</button>
+          <div class="orders-detail-empty">
+            <h3>Order details</h3>
+            <p class="muted">Select an order card to view details and update status.</p>
+          </div>
+          ${orders.map((order) => orderDetailPanel(order, statuses, labels, csrfToken)).join("")}
+        </aside>
         <section class="panel archived-orders-panel">
           <div class="section-heading">
             <h2>Archived</h2>
