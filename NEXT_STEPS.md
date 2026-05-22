@@ -116,8 +116,7 @@ External services are acceptable when they solve a real store need with minimal 
 
 2. Back-in-stock notifications are now implemented for out-of-stock product
    pages and admin inventory updates from zero to in stock.
-   Future improvement: also trigger notifications when cancelled/no-show
-   reservations release inventory back to stock.
+   Cancelled/no-show inventory release now triggers notifications too.
 
 3. Add better empty and unavailable states.
    Clear out-of-stock handling

@@ -428,7 +428,7 @@ export function getOrderByNumber(orderNumber) {
   const order = db
     .prepare(`
       SELECT
-        id, order_number, email, full_name, shipping_address, postal_code, status, archived_at,
+        id, order_number, email, full_name, shipping_address, postal_code, status, archived_at, inventory_released_at,
         subtotal_cents, shipping_cents, total_cents, notes, created_at
       FROM orders
       WHERE order_number = ?
@@ -472,6 +472,7 @@ export function listOrders({ includeArchived = false } = {}) {
         postal_code,
         status,
         archived_at,
+        inventory_released_at,
         subtotal_cents,
         shipping_cents,
         total_cents,
@@ -491,6 +492,7 @@ export function listOrders({ includeArchived = false } = {}) {
     .prepare(`
       SELECT
         order_id,
+        product_id,
         product_name,
         sku,
         quantity,
@@ -615,6 +617,52 @@ export function deleteProduct(id) {
 
 export function updateOrderStatus(orderNumber, status) {
   db.prepare("UPDATE orders SET status = ? WHERE order_number = ?").run(status, orderNumber);
+}
+
+export function releaseOrderInventory(orderNumber) {
+  return runInTransaction(() => {
+    const order = db
+      .prepare("SELECT id, inventory_released_at FROM orders WHERE order_number = ?")
+      .get(orderNumber);
+    if (!order) {
+      throw new Error("Order not found.");
+    }
+    if (order.inventory_released_at) {
+      return { restoredCount: 0, products: [], alreadyReleased: true };
+    }
+
+    const items = db
+      .prepare(`
+        SELECT product_id, quantity
+        FROM order_items
+        WHERE order_id = ?
+        ORDER BY id
+      `)
+      .all(order.id);
+
+    const readProduct = db.prepare("SELECT id, slug, name, inventory_count, status FROM products WHERE id = ?");
+    const updateInventory = db.prepare(`
+      UPDATE products
+      SET inventory_count = inventory_count + ?
+      WHERE id = ?
+    `);
+
+    const productsToNotify = [];
+    let restoredCount = 0;
+    for (const item of items) {
+      const before = readProduct.get(item.product_id);
+      updateInventory.run(item.quantity, item.product_id);
+      restoredCount += item.quantity;
+      const after = readProduct.get(item.product_id);
+      if (before?.status === "active" && before.inventory_count <= 0 && after?.inventory_count > 0) {
+        productsToNotify.push(after);
+      }
+    }
+
+    db.prepare("UPDATE orders SET inventory_released_at = CURRENT_TIMESTAMP WHERE id = ?").run(order.id);
+
+    return { restoredCount, products: productsToNotify, alreadyReleased: false };
+  });
 }
 
 export function archiveOrder(orderNumber) {

@@ -22,6 +22,7 @@ import {
   lookupOrder,
   markBackInStockRequestNotified,
   recordContactOrder,
+  releaseOrderInventory,
   requestBackInStockNotification,
   updateOrderStatus,
   unarchiveOrder,
@@ -205,6 +206,17 @@ async function sendBackInStockEmailsForProduct(product) {
     }
   }
 
+  return { sentCount, failedCount };
+}
+
+async function sendBackInStockEmailsForProducts(products) {
+  let sentCount = 0;
+  let failedCount = 0;
+  for (const product of products) {
+    const result = await sendBackInStockEmailsForProduct(product);
+    sentCount += result.sentCount;
+    failedCount += result.failedCount;
+  }
   return { sentCount, failedCount };
 }
 
@@ -693,6 +705,21 @@ app.post("/admin/orders", requireCsrf, requireAdmin, async (req, res) => {
   const previousOrder = getOrderByNumber(orderNumber);
   updateOrderStatus(orderNumber, status);
   const updatedOrder = getOrderByNumber(orderNumber);
+  const shouldReleaseInventory =
+    (status === "cancelled" || status === "no_show") && req.body.returnInventory === "on";
+  let releaseResult = null;
+  let notificationResult = null;
+
+  if (updatedOrder && shouldReleaseInventory) {
+    try {
+      releaseResult = releaseOrderInventory(orderNumber);
+      notificationResult = await sendBackInStockEmailsForProducts(releaseResult.products);
+    } catch (error) {
+      console.error("Failed to release order inventory:", error);
+      setFlash(res, "error", "Order updated, but inventory could not be returned to stock.");
+      return res.redirect("/admin/orders");
+    }
+  }
 
   if (status === "ready" && previousOrder?.status !== "ready" && updatedOrder) {
     try {
@@ -714,7 +741,19 @@ app.post("/admin/orders", requireCsrf, requireAdmin, async (req, res) => {
     }
   }
 
-  setFlash(res, "success", "Order updated.");
+  const messages = ["Order updated."];
+  if (releaseResult?.alreadyReleased) {
+    messages.push("Inventory was already returned.");
+  } else if (releaseResult?.restoredCount > 0) {
+    messages.push(`Returned ${releaseResult.restoredCount} item${releaseResult.restoredCount === 1 ? "" : "s"} to stock.`);
+  }
+  if (notificationResult?.sentCount > 0) {
+    messages.push(`Sent ${notificationResult.sentCount} back-in-stock email${notificationResult.sentCount === 1 ? "" : "s"}.`);
+  }
+  if (notificationResult?.failedCount > 0) {
+    messages.push(`${notificationResult.failedCount} back-in-stock email${notificationResult.failedCount === 1 ? "" : "s"} failed.`);
+  }
+  setFlash(res, notificationResult?.failedCount > 0 ? "error" : "success", messages.join(" "));
   res.redirect("/admin/orders");
 });
 

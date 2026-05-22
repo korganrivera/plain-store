@@ -76,7 +76,7 @@ flowchart TD
 - `cancelled` releases reserved quantities back to product inventory unless the owner marks items as spoiled, discarded, or otherwise unavailable.
 - `no_show` releases reserved quantities only when the owner decides to stop holding the order.
 - Partial fulfillment releases only the quantities that will not be picked up.
-- Returned-to-stock should create an audit/history entry so the owner can see why inventory changed.
+- Returned-to-stock is tracked on the order with `inventory_released_at` so the same order cannot restore stock twice.
 
 ## Back-in-Stock Queue
 
@@ -109,8 +109,6 @@ worth it.
 
 The next workflow implementation should add the smallest missing pieces first:
 
-- Inventory release helpers for `cancelled` and `no_show`.
 - A status-change history table or notes field so reason and release decisions are visible.
 - Partial fulfillment adjustment in admin before marking an order ready.
-- Back-in-stock request table and notification action.
 - Clearer pickup-location text in confirmation and ready-for-pickup emails.

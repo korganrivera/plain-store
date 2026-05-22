@@ -639,6 +639,7 @@ select {
   display: flex;
   gap: 0.5rem;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .orders-card-actions-secondary {
@@ -670,6 +671,25 @@ select {
   color: white;
   border: 0;
   font-weight: 700;
+}
+
+.inventory-release-control {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 0.45rem;
+  color: var(--muted);
+}
+
+.inventory-release-control input {
+  width: auto;
+  margin: 0.15rem 0 0;
+}
+
+.inventory-release-control span,
+.inventory-release-note {
+  font-size: 0.78rem;
 }
 
 .compact-list li {

@@ -201,6 +201,21 @@ function orderStatusLabel(status) {
   return orderStatusLabels[status] || status;
 }
 
+function inventoryReleaseControl(order) {
+  if (order.status === "cancelled" || order.status === "no_show") {
+    return order.inventory_released_at
+      ? '<p class="muted inventory-release-note">Inventory returned to stock.</p>'
+      : "";
+  }
+
+  return `
+    <label class="inventory-release-control">
+      <input type="checkbox" name="returnInventory" checked>
+      <span>Return items to stock if cancelled/no-show</span>
+    </label>
+  `;
+}
+
 function orderConfirmationMessage(order) {
   if (order.status !== "requested") {
     return `
@@ -774,6 +789,11 @@ export function adminOrdersPage({ cartCount, orders, archivedOrders, flash, csrf
                                   <dl class="orders-card-summary">
                                     <div><dt>Items</dt><dd>${order.items.reduce((sum, item) => sum + item.quantity, 0)}</dd></div>
                                     <div><dt>Status</dt><dd>${escapeHtml(orderStatusLabel(order.status))}</dd></div>
+                                    ${
+                                      order.inventory_released_at
+                                        ? "<div><dt>Inventory</dt><dd>Returned</dd></div>"
+                                        : ""
+                                    }
                                   </dl>
                                   <div class="orders-card-block">
                                     <div class="eyebrow">Pickup details</div>
@@ -811,6 +831,7 @@ export function adminOrdersPage({ cartCount, orders, archivedOrders, flash, csrf
                                         .join("")}
                                     </select>
                                     <button type="submit" class="orders-action-button">Update</button>
+                                    ${inventoryReleaseControl(order)}
                                   </form>
                                   ${
                                     order.status === "cancelled" || order.status === "no_show"

@@ -132,6 +132,7 @@ function applySchema(db) {
       postal_code TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'requested' CHECK (status IN ('requested', 'ready', 'picked_up', 'cancelled', 'no_show')),
       archived_at TEXT,
+      inventory_released_at TEXT,
       subtotal_cents INTEGER NOT NULL CHECK (subtotal_cents >= 0),
       shipping_cents INTEGER NOT NULL CHECK (shipping_cents >= 0),
       total_cents INTEGER NOT NULL CHECK (total_cents >= 0),
@@ -201,6 +202,9 @@ function applySchema(db) {
   if (!ordersColumns.some((column) => column.name === "archived_at")) {
     db.exec("ALTER TABLE orders ADD COLUMN archived_at TEXT;");
   }
+  if (!ordersColumns.some((column) => column.name === "inventory_released_at")) {
+    db.exec("ALTER TABLE orders ADD COLUMN inventory_released_at TEXT;");
+  }
   migrateOrderStatuses(db);
   db.exec("CREATE INDEX IF NOT EXISTS idx_orders_archived_at ON orders(archived_at);");
 }
@@ -235,6 +239,7 @@ function migrateOrderStatuses(db) {
       postal_code TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'requested' CHECK (status IN ('requested', 'ready', 'picked_up', 'cancelled', 'no_show')),
       archived_at TEXT,
+      inventory_released_at TEXT,
       subtotal_cents INTEGER NOT NULL CHECK (subtotal_cents >= 0),
       shipping_cents INTEGER NOT NULL CHECK (shipping_cents >= 0),
       total_cents INTEGER NOT NULL CHECK (total_cents >= 0),
@@ -255,7 +260,7 @@ function migrateOrderStatuses(db) {
 
     INSERT INTO orders (
       id, order_number, email, full_name, shipping_address, postal_code, status,
-      archived_at, subtotal_cents, shipping_cents, total_cents, notes, created_at
+      archived_at, inventory_released_at, subtotal_cents, shipping_cents, total_cents, notes, created_at
     )
     SELECT
       id,
@@ -271,6 +276,7 @@ function migrateOrderStatuses(db) {
         ELSE status
       END,
       archived_at,
+      NULL,
       subtotal_cents,
       shipping_cents,
       total_cents,
