@@ -667,6 +667,8 @@ select {
 }
 
 .orders-action-button {
+  grid-column: 1 / -1;
+  width: 100%;
   padding: 0.45rem 0.7rem;
   border-radius: 6px;
   background: var(--accent);
