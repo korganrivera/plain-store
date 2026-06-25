@@ -1204,8 +1204,11 @@ input[type="file"]::file-selector-button {
     grid-template-columns: 1.5fr 0.8fr 1fr;
   }
 
+}
+
+@media (min-width: 1120px) {
   .admin-grid {
-    grid-template-columns: minmax(0, 1.4fr) minmax(20rem, 1fr);
+    grid-template-columns: minmax(49rem, 1fr) minmax(18rem, 0.4fr);
     grid-template-areas:
       "products product-form"
       "products images"
@@ -1228,7 +1231,6 @@ input[type="file"]::file-selector-button {
   .admin-category-panel {
     grid-area: category;
   }
-
 }
 
 @media (max-width: 799px) {

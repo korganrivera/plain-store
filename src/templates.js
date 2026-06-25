@@ -1,6 +1,6 @@
 import { escapeHtml, formatCurrency } from "./utils.js";
 
-const assetVersion = process.env.ASSET_VERSION || "2026-06-25-7";
+const assetVersion = process.env.ASSET_VERSION || "2026-06-25-8";
 
 function nav(currentPath, cartCount, headerSearch = "") {
   const links = [
@@ -49,7 +49,7 @@ function breadcrumbs(items) {
       <ol>
         ${items
           .map((item, index) => {
-            const isCurrent = index === items.length - 1;
+            const isCurrent = item.current ?? index === items.length - 1;
             return `
               <li>
                 ${
@@ -455,7 +455,7 @@ export function productPage({ product, cartCount, csrfToken, flash = null }) {
                   type="email"
                   name="email"
                   required
-                  placeholder="Notify me when these are back in stock"
+                  placeholder="email@example.com"
                 >
                 <button type="submit" aria-label="Submit back in stock notification">&#10003;</button>
               </div>
@@ -472,8 +472,7 @@ export function productPage({ product, cartCount, csrfToken, flash = null }) {
     content: `
       ${breadcrumbs([
         { href: "/", label: "Home" },
-        { href: `/c/${product.category_slug}`, label: product.category_name },
-        { label: product.name },
+        { href: `/c/${product.category_slug}`, label: product.category_name, current: false },
       ])}
       <article class="product-layout">
         <div class="product-stage">

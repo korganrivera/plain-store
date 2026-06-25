@@ -203,7 +203,7 @@ test("category and product pages show breadcrumb navigation", async () => {
   assert.match(productHtml, /<nav class="breadcrumbs" aria-label="Breadcrumb">/);
   assert.match(productHtml, /<a href="\/">Home<\/a>/);
   assert.match(productHtml, /<a href="\/c\/eggs">Eggs<\/a>/);
-  assert.match(productHtml, /<span aria-current="page">Fresh Eggs - 1 dozen<\/span>/);
+  assert.doesNotMatch(productHtml, /<span aria-current="page">Fresh Eggs - 1 dozen<\/span>/);
   assert.ok(productHtml.indexOf('<nav class="breadcrumbs"') < productHtml.indexOf('<article class="product-layout">'));
 });
 
@@ -610,7 +610,7 @@ test("unverified back-in-stock requests send confirmation before queueing", asyn
   const beforeFiles = fs.existsSync(outboxDir) ? new Set(fs.readdirSync(outboxDir)) : new Set();
 
   assert.match(productHtml, /Back in stock alerts/);
-  assert.match(productHtml, /placeholder="Notify me when these are back in stock"/);
+  assert.match(productHtml, /placeholder="email@example\.com"/);
   assert.match(productHtml, /aria-label="Submit back in stock notification"/);
   assert.doesNotMatch(productHtml, />Notify me when these are back in stock<\/button>/);
   assert.match(productHtml, /Pickup only\. Pay at pickup\./);
