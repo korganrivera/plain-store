@@ -1190,6 +1190,11 @@ input[type="file"]::file-selector-button {
 }
 
 @media (min-width: 800px) {
+  .product-layout {
+    grid-template-columns: minmax(16rem, 26rem) minmax(0, 42rem);
+    align-items: start;
+  }
+
   .checkout-layout,
   .cart-layout {
     grid-template-columns: 2fr 1fr;
