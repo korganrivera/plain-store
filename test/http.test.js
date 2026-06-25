@@ -194,6 +194,7 @@ test("category and product pages show breadcrumb navigation", async () => {
   assert.match(categoryHtml, /<a href="\/">Home<\/a>/);
   assert.match(categoryHtml, /<span aria-current="page">Eggs<\/span>/);
   assert.doesNotMatch(categoryHtml, /<p class="eyebrow">Category<\/p>/);
+  assert.doesNotMatch(categoryHtml, /<h1>Eggs<\/h1>/);
 
   const product = await fetch(`${base}/p/fresh-eggs-1-dozen`);
   const productHtml = await product.text();
@@ -203,6 +204,7 @@ test("category and product pages show breadcrumb navigation", async () => {
   assert.match(productHtml, /<a href="\/">Home<\/a>/);
   assert.match(productHtml, /<a href="\/c\/eggs">Eggs<\/a>/);
   assert.match(productHtml, /<span aria-current="page">Fresh Eggs - 1 dozen<\/span>/);
+  assert.ok(productHtml.indexOf('<nav class="breadcrumbs"') < productHtml.indexOf('<article class="product-layout">'));
 });
 
 test("cart add clamps requested quantity and explains available stock", async () => {

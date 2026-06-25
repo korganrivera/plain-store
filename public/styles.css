@@ -444,6 +444,10 @@ input[type="file"]::file-selector-button {
   text-transform: capitalize;
 }
 
+.category-description {
+  max-width: 42rem;
+}
+
 .product-card {
   display: grid;
   gap: 0.9rem;

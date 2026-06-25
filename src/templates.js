@@ -1,6 +1,6 @@
 import { escapeHtml, formatCurrency } from "./utils.js";
 
-const assetVersion = process.env.ASSET_VERSION || "2026-06-25-5";
+const assetVersion = process.env.ASSET_VERSION || "2026-06-25-6";
 
 function nav(currentPath, cartCount, headerSearch = "") {
   const links = [
@@ -183,6 +183,10 @@ export function homePage({ categories, products, search, cartCount, flash = null
 }
 
 export function categoryPage({ category, products, cartCount, flash = null }) {
+  const categoryDescription = category.description
+    ? `<p class="muted category-description">${escapeHtml(category.description)}</p>`
+    : "";
+
   return layout({
     title: category.name,
     currentPath: "",
@@ -193,12 +197,7 @@ export function categoryPage({ category, products, cartCount, flash = null }) {
         { href: "/", label: "Home" },
         { label: category.name },
       ])}
-      <section class="section-heading">
-        <div>
-          <h1>${escapeHtml(category.name)}</h1>
-        </div>
-        <p class="muted">${escapeHtml(category.description)}</p>
-      </section>
+      ${categoryDescription}
       ${productGrid(products)}
     `,
   });
@@ -471,16 +470,16 @@ export function productPage({ product, cartCount, csrfToken, flash = null }) {
     cartCount,
     flash,
     content: `
+      ${breadcrumbs([
+        { href: "/", label: "Home" },
+        { href: `/c/${product.category_slug}`, label: product.category_name },
+        { label: product.name },
+      ])}
       <article class="product-layout">
         <div class="product-stage">
           <img src="${escapeHtml(product.image_path || "/images/placeholder.svg")}" alt="" class="product-image product-image-large">
         </div>
         <div class="stack-tight">
-          ${breadcrumbs([
-            { href: "/", label: "Home" },
-            { href: `/c/${product.category_slug}`, label: product.category_name },
-            { label: product.name },
-          ])}
           <p class="muted product-sku">SKU ${escapeHtml(product.sku)}</p>
           <h1>${escapeHtml(product.name)}</h1>
           ${productDescriptionHtml(product.description)}
