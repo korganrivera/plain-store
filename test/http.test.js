@@ -185,6 +185,26 @@ after(() => {
   }
 });
 
+test("category and product pages show breadcrumb navigation", async () => {
+  const category = await fetch(`${base}/c/eggs`);
+  const categoryHtml = await category.text();
+
+  assert.equal(category.status, 200);
+  assert.match(categoryHtml, /<nav class="breadcrumbs" aria-label="Breadcrumb">/);
+  assert.match(categoryHtml, /<a href="\/">Home<\/a>/);
+  assert.match(categoryHtml, /<span aria-current="page">Eggs<\/span>/);
+  assert.doesNotMatch(categoryHtml, /<p class="eyebrow">Category<\/p>/);
+
+  const product = await fetch(`${base}/p/fresh-eggs-1-dozen`);
+  const productHtml = await product.text();
+
+  assert.equal(product.status, 200);
+  assert.match(productHtml, /<nav class="breadcrumbs" aria-label="Breadcrumb">/);
+  assert.match(productHtml, /<a href="\/">Home<\/a>/);
+  assert.match(productHtml, /<a href="\/c\/eggs">Eggs<\/a>/);
+  assert.match(productHtml, /<span aria-current="page">Fresh Eggs - 1 dozen<\/span>/);
+});
+
 test("cart add clamps requested quantity and explains available stock", async () => {
   const product = await fetch(`${base}/p/fresh-eggs-1-dozen`);
   let cookies = [firstCookie(product.headers)].filter(Boolean);

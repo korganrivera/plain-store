@@ -1,6 +1,6 @@
 import { escapeHtml, formatCurrency } from "./utils.js";
 
-const assetVersion = process.env.ASSET_VERSION || "2026-06-25-4";
+const assetVersion = process.env.ASSET_VERSION || "2026-06-25-5";
 
 function nav(currentPath, cartCount, headerSearch = "") {
   const links = [
@@ -41,6 +41,29 @@ function flashHtml(flash) {
     return "";
   }
   return `<div class="flash ${escapeHtml(flash.type)}">${escapeHtml(flash.message)}</div>`;
+}
+
+function breadcrumbs(items) {
+  return `
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <ol>
+        ${items
+          .map((item, index) => {
+            const isCurrent = index === items.length - 1;
+            return `
+              <li>
+                ${
+                  isCurrent || !item.href
+                    ? `<span aria-current="page">${escapeHtml(item.label)}</span>`
+                    : `<a href="${escapeHtml(item.href)}">${escapeHtml(item.label)}</a>`
+                }
+              </li>
+            `;
+          })
+          .join("")}
+      </ol>
+    </nav>
+  `;
 }
 
 function descriptionParagraphs(description) {
@@ -166,9 +189,12 @@ export function categoryPage({ category, products, cartCount, flash = null }) {
     cartCount,
     flash,
     content: `
+      ${breadcrumbs([
+        { href: "/", label: "Home" },
+        { label: category.name },
+      ])}
       <section class="section-heading">
         <div>
-          <p class="eyebrow">Category</p>
           <h1>${escapeHtml(category.name)}</h1>
         </div>
         <p class="muted">${escapeHtml(category.description)}</p>
@@ -450,7 +476,11 @@ export function productPage({ product, cartCount, csrfToken, flash = null }) {
           <img src="${escapeHtml(product.image_path || "/images/placeholder.svg")}" alt="" class="product-image product-image-large">
         </div>
         <div class="stack-tight">
-          <p class="eyebrow"><a href="/c/${escapeHtml(product.category_slug)}">${escapeHtml(product.category_name)}</a></p>
+          ${breadcrumbs([
+            { href: "/", label: "Home" },
+            { href: `/c/${product.category_slug}`, label: product.category_name },
+            { label: product.name },
+          ])}
           <p class="muted product-sku">SKU ${escapeHtml(product.sku)}</p>
           <h1>${escapeHtml(product.name)}</h1>
           ${productDescriptionHtml(product.description)}
