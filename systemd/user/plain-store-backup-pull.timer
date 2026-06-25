@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Plain Store off-server backup pull
+
+[Timer]
+OnStartupSec=10min
+OnCalendar=*-*-* 19:30:00
+Persistent=true
+RandomizedDelaySec=30min
+
+[Install]
+WantedBy=timers.target

@@ -3,7 +3,7 @@ import path from "node:path";
 import nodemailer from "nodemailer";
 import { formatCurrency } from "./utils.js";
 
-const outboxDir = path.resolve("data", "email_outbox");
+const outboxDir = path.resolve(process.env.EMAIL_OUTBOX_DIR || path.join("data", "email_outbox"));
 
 function envFlag(name, fallback = false) {
   const value = process.env[name];
@@ -66,7 +66,10 @@ function createTransport() {
 
 function orderUrl(order) {
   const baseUrl = publicStoreUrl();
-  return baseUrl ? `${baseUrl}/order/${order.order_number}` : `/order/${order.order_number}`;
+  if (order.status_token) {
+    return baseUrl ? `${baseUrl}/order/status/${order.status_token}` : `/order/status/${order.status_token}`;
+  }
+  return baseUrl ? `${baseUrl}/order-lookup` : "/order-lookup";
 }
 
 function productUrl(product) {
@@ -77,6 +80,11 @@ function productUrl(product) {
 function confirmationUrl(token) {
   const baseUrl = publicStoreUrl();
   return baseUrl ? `${baseUrl}/order/confirm/${token}` : `/order/confirm/${token}`;
+}
+
+function backInStockConfirmationUrl(token) {
+  const baseUrl = publicStoreUrl();
+  return baseUrl ? `${baseUrl}/back-in-stock/confirm/${token}` : `/back-in-stock/confirm/${token}`;
 }
 
 function orderItemsText(order) {
@@ -192,6 +200,26 @@ export async function sendOrderConfirmationEmail(pending) {
   });
 }
 
+export async function sendBackInStockConfirmationEmail(pending) {
+  const text = [
+    `Please confirm your ${storeName()} back-in-stock notification request.`,
+    "",
+    `Item: ${pending.product.name}`,
+    "",
+    "This does not reserve the item. We will email you if it becomes available again.",
+    "",
+    `Confirm notification request: ${backInStockConfirmationUrl(pending.token)}`,
+    "",
+    `This link expires in ${pending.expiresMinutes} minutes.`,
+  ].join("\n");
+
+  return sendMail({
+    to: pending.email,
+    subject: `Confirm back-in-stock request: ${pending.product.name}`,
+    text,
+  });
+}
+
 export async function sendBackInStockEmail(product, request) {
   const text = [
     `${product.name} is back in stock at ${storeName()}.`,
@@ -204,6 +232,31 @@ export async function sendBackInStockEmail(product, request) {
   return sendMail({
     to: request.email,
     subject: `Back in stock: ${product.name}`,
+    text,
+  });
+}
+
+export async function sendContactMessageEmail(message) {
+  const ownerEmail = storeOwnerEmail();
+  if (!ownerEmail) {
+    throw new Error("Store owner email is not configured.");
+  }
+
+  const text = [
+    `New contact message from ${storeName()}.`,
+    "",
+    `Name: ${message.name || "Not provided"}`,
+    `Email: ${message.email}`,
+    `Subject: ${message.subject}`,
+    "",
+    "Message:",
+    message.message,
+  ].join("\n");
+
+  return sendMail({
+    to: ownerEmail,
+    replyTo: message.email,
+    subject: `Store question: ${message.subject}`,
     text,
   });
 }

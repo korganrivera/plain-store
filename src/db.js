@@ -2,8 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-const dataDir = path.resolve("data");
-const dbPath = path.join(dataDir, "store.db");
+const dbPath = path.resolve(process.env.DB_PATH || path.join("data", "store.db"));
+const dataDir = path.dirname(dbPath);
 let transactionDepth = 0;
 
 function ensureDataDir() {
@@ -29,9 +29,7 @@ function seedIfEmpty(db) {
   `);
 
   const categories = [
-    ["desk-tools", "Desk Tools", "Compact tools and accessories for focused work.", 1],
-    ["carry", "Carry", "Simple, durable everyday carry goods.", 2],
-    ["paper", "Paper", "Paper goods that stay out of the way.", 3],
+    ["eggs", "Eggs", "Local pickup eggs.", 1],
   ];
 
   const categoryIds = new Map();
@@ -42,48 +40,15 @@ function seedIfEmpty(db) {
 
   const products = [
     {
-      category_id: categoryIds.get("desk-tools"),
-      slug: "aluminum-ruler",
-      name: "Aluminum Ruler",
-      sku: "DST-001",
-      description: "Solid 30 cm ruler with etched markings and a matte finish.",
-      price_cents: 1800,
-      inventory_count: 42,
+      category_id: categoryIds.get("eggs"),
+      slug: "fresh-eggs-1-dozen",
+      name: "Fresh Eggs - 1 dozen",
+      sku: "EGG-001",
+      description: "One dozen fresh eggs for local pickup.",
+      price_cents: 400,
+      inventory_count: 4,
       status: "active",
-      image_path: "/images/aluminum-ruler.svg",
-    },
-    {
-      category_id: categoryIds.get("desk-tools"),
-      slug: "brass-bookmark",
-      name: "Brass Bookmark",
-      sku: "DST-002",
-      description: "Thin brass bookmark that ages well and does one job cleanly.",
-      price_cents: 1200,
-      inventory_count: 65,
-      status: "active",
-      image_path: "/images/brass-bookmark.svg",
-    },
-    {
-      category_id: categoryIds.get("carry"),
-      slug: "utility-pouch",
-      name: "Utility Pouch",
-      sku: "CAR-001",
-      description: "Waxed canvas pouch sized for cables, tools, and notebooks.",
-      price_cents: 3400,
-      inventory_count: 18,
-      status: "active",
-      image_path: "/images/utility-pouch.svg",
-    },
-    {
-      category_id: categoryIds.get("paper"),
-      slug: "grid-notebook",
-      name: "Grid Notebook",
-      sku: "PPR-001",
-      description: "A5 notebook with stitched binding and quiet grid pages.",
-      price_cents: 1400,
-      inventory_count: 90,
-      status: "active",
-      image_path: "/images/grid-notebook.svg",
+      image_path: "/images/eggs.jpg",
     },
   ];
 
@@ -126,6 +91,7 @@ function applySchema(db) {
     CREATE TABLE IF NOT EXISTS orders (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       order_number TEXT NOT NULL UNIQUE,
+      status_token_hash TEXT UNIQUE,
       email TEXT NOT NULL,
       full_name TEXT NOT NULL,
       shipping_address TEXT NOT NULL,
@@ -174,6 +140,17 @@ function applySchema(db) {
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS pending_back_in_stock_confirmations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      token_hash TEXT NOT NULL UNIQUE,
+      product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+      email TEXT NOT NULL,
+      request_ip TEXT NOT NULL DEFAULT '',
+      expires_at TEXT NOT NULL,
+      used_at TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS back_in_stock_requests (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
@@ -187,6 +164,8 @@ function applySchema(db) {
     CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_pending_order_confirmations_email_created_at ON pending_order_confirmations(email, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_pending_order_confirmations_expires_at ON pending_order_confirmations(expires_at);
+    CREATE INDEX IF NOT EXISTS idx_pending_back_in_stock_confirmations_email_created_at ON pending_back_in_stock_confirmations(email, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_pending_back_in_stock_confirmations_expires_at ON pending_back_in_stock_confirmations(expires_at);
     CREATE INDEX IF NOT EXISTS idx_back_in_stock_requests_product_pending ON back_in_stock_requests(product_id, notified_at, requested_at);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_back_in_stock_requests_open_email ON back_in_stock_requests(product_id, email) WHERE notified_at IS NULL;
 
@@ -205,8 +184,12 @@ function applySchema(db) {
   if (!ordersColumns.some((column) => column.name === "inventory_released_at")) {
     db.exec("ALTER TABLE orders ADD COLUMN inventory_released_at TEXT;");
   }
+  if (!ordersColumns.some((column) => column.name === "status_token_hash")) {
+    db.exec("ALTER TABLE orders ADD COLUMN status_token_hash TEXT;");
+  }
   migrateOrderStatuses(db);
   db.exec("CREATE INDEX IF NOT EXISTS idx_orders_archived_at ON orders(archived_at);");
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_status_token_hash ON orders(status_token_hash);");
 }
 
 function migrateOrderStatuses(db) {
@@ -233,6 +216,7 @@ function migrateOrderStatuses(db) {
     CREATE TABLE orders (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       order_number TEXT NOT NULL UNIQUE,
+      status_token_hash TEXT UNIQUE,
       email TEXT NOT NULL,
       full_name TEXT NOT NULL,
       shipping_address TEXT NOT NULL,
@@ -259,12 +243,13 @@ function migrateOrderStatuses(db) {
     );
 
     INSERT INTO orders (
-      id, order_number, email, full_name, shipping_address, postal_code, status,
+      id, order_number, status_token_hash, email, full_name, shipping_address, postal_code, status,
       archived_at, inventory_released_at, subtotal_cents, shipping_cents, total_cents, notes, created_at
     )
     SELECT
       id,
       order_number,
+      NULL,
       email,
       full_name,
       shipping_address,

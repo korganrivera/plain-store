@@ -1,0 +1,7 @@
+[Unit]
+Description=Pull Plain Store production backups from Vultr
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/korgan/store
+ExecStart=/usr/bin/npm run backup:pull-vultr

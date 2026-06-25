@@ -10,7 +10,8 @@ Minimalist, self-hosted local pickup store MVP built as a small Node.js monolith
 - Express
 - SQLite via the built-in `node:sqlite` module
 - Server-rendered HTML from plain template functions
-- Static CSS and local SVG product images
+- Static CSS and local optimized product images
+- Sharp for upload image resizing/compression
 
 ## Run
 
@@ -32,7 +33,7 @@ Minimalist, self-hosted local pickup store MVP built as a small Node.js monolith
 
 4. Open `http://localhost:3001`
 
-The first run creates `data/store.db` and seeds a small demo catalog automatically.
+The first run creates `data/store.db` and seeds the current starter catalog automatically.
 
 ## Routes
 
@@ -40,9 +41,10 @@ The first run creates `data/store.db` and seeds a small demo catalog automatical
 - `/search?q=...` simple search
 - `/c/:slug` category pages
 - `/p/:slug` product detail pages
+- `/contact` contact form
 - `/cart` basket
 - `/checkout` pickup details
-- `/order/:orderNumber` pickup order confirmation
+- `/order/status/:token` private pickup order status links
 - `/order-lookup` pickup order lookup
 - `/admin` admin dashboard
 
@@ -52,21 +54,42 @@ The admin is intentionally plain. It supports:
 
 - product create/edit
 - inventory and pricing updates
+- low-stock and out-of-stock warnings
+- product image upload/delete with automatic web optimization
 - category creation
 - order status updates
 
-Default local password fallback is `change-me`. Set `ADMIN_PASSWORD` in real use.
+Default local password fallback is `change-me`. Set `ADMIN_PASSWORD_HASH` in real use.
 
 ## Operations
 
 - Data lives in `data/store.db`
 - Email uses SMTP when `SMTP_HOST` and `MAIL_FROM` are set
 - Without SMTP settings, email messages are written to `data/email_outbox/`
+- New back-in-stock notification emails are confirmed before they enter the queue;
+  previously verified order contacts can join directly
 - Static assets live in `public/`
 - Simple file backups: `npm run backup`
 - Health check: `/healthz`
 - Put Caddy or Nginx in front for TLS and compression
 - A minimal [Caddyfile](/home/korgan/store/Caddyfile) is included for self-hosting
+
+## Product Images
+
+Admin uploads accept common image formats and save only an optimized web JPEG.
+Images are rotated from EXIF metadata, resized to fit within `900 x 900`, and
+compressed so product pages do not serve oversized originals.
+
+## Tests
+
+Run the critical-path test suite:
+
+```bash
+npm test
+```
+
+The tests use temporary SQLite databases. The HTTP route tests start a temporary
+local server and do not touch production or local development data.
 
 ## systemd
 
@@ -95,6 +118,7 @@ sudo systemctl restart plain-store
 - `ADMIN_PASSWORD` remains a development fallback when `ADMIN_PASSWORD_HASH` is not set
 - `COOKIE_SECRET` should always be set in real use
 - `COOKIE_SECURE=true` is recommended behind HTTPS; use `false` for plain local HTTP development
+- `TRUST_PROXY` defaults to `loopback`, which matches a same-host Caddy/Nginx reverse proxy and prevents direct clients from spoofing forwarded IP headers
 - `PUBLIC_STORE_URL` is used in order-status email links
 - `PICKUP_LOCATION` and `PICKUP_INSTRUCTIONS` are included in pickup-order emails
 - `MAIL_FROM`, `STORE_OWNER_EMAIL`, and `SMTP_*` enable real email delivery

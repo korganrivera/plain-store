@@ -8,6 +8,8 @@
     "start": "node --import ./src/load-env.js src/server.js",
     "dev": "node --watch --import ./src/load-env.js src/server.js",
     "backup": "node --import ./src/load-env.js src/backup.js",
+    "backup:pull-vultr": "bash scripts/pull-vultr-backups.sh",
+    "test": "node test/store.test.js && node test/http.test.js",
     "admin:hash": "node src/admin-auth.js"
   },
   "engines": {
@@ -15,6 +17,7 @@
   },
   "dependencies": {
     "express": "^5.1.0",
-    "nodemailer": "^8.0.7"
+    "nodemailer": "^8.0.7",
+    "sharp": "^0.35.2"
   }
 }

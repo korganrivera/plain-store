@@ -35,6 +35,26 @@ export function requireCheckoutFields(body) {
   return { value: { email, fullName, phone, pickupDetails, pickupWindow, postalCode: "", notes } };
 }
 
+export function requireContactFields(body) {
+  const name = plainText(body.name, 120);
+  const email = plainText(body.email, 200).toLowerCase();
+  const subject = plainText(body.subject, 120) || "Store question";
+  const message = plainMultiline(body.message, 2000);
+  const website = plainText(body.website, 200);
+
+  if (website) {
+    return { value: { name, email, subject, message, spam: true } };
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { error: "Enter a valid email address." };
+  }
+  if (message.length < 2) {
+    return { error: "Enter a message." };
+  }
+
+  return { value: { name, email, subject, message, spam: false } };
+}
+
 export function requireAdminProductFields(body) {
   const name = plainText(body.name, 120);
   const sku = plainText(body.sku, 40).toUpperCase();

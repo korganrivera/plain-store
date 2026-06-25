@@ -1,7 +1,7 @@
 # Backup and Restore
 
-Plain Store stores operational data in `data/store.db`. Backups are simple
-SQLite database file copies written to `backups/`.
+Plain Store stores operational data in `data/store.db`. Backups use SQLite's
+online backup command so WAL-mode databases are copied safely into `backups/`.
 
 ## Create Backup
 
@@ -67,3 +67,28 @@ Then check the homepage, admin login, catalog, and order board.
 - Copy important backups off-server.
 - Periodically verify a backup using the read-only check above.
 - Do not restore while the app is running.
+
+## Pull Vultr Backups
+
+From the local repo, pull production backups from the Vultr server:
+
+```bash
+npm run backup:pull-vultr
+```
+
+The script copies missing `store-*.db` files from `/opt/plain-store/backups/`
+to `backups/vultr/`, then verifies the newest valid backup can read the core
+tables. The backup files remain ignored by git.
+
+The laptop also has a user systemd timer installed from
+`systemd/user/plain-store-backup-pull.timer`. It runs the same pull command on
+startup and daily around 19:30 local time, with `Persistent=true` so missed runs
+catch up when the user session starts.
+
+Useful local commands:
+
+```bash
+systemctl --user status plain-store-backup-pull.timer
+systemctl --user list-timers plain-store-backup-pull.timer
+journalctl --user -u plain-store-backup-pull.service -n 80 --no-pager
+```

@@ -4,11 +4,12 @@ After=network.target
 
 [Service]
 Type=simple
-User=korgan
-WorkingDirectory=/home/korgan/store
+User=linuxuser
+WorkingDirectory=/opt/plain-store
 ExecStart=/usr/bin/npm start
 Restart=on-failure
 RestartSec=3
+Environment=NODE_ENV=production
 
 [Install]
 WantedBy=multi-user.target

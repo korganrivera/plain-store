@@ -4,24 +4,23 @@ Target: small Linux VPS running Node, SQLite, systemd, and Caddy.
 
 ## 1. Server
 
-- Product: a small shared Linux VPS. Vultr Cloud Compute is the current likely
-  choice.
+- Product: Vultr Cloud Compute, Shared CPU.
 - Size: the smallest 1 GB RAM instance is enough to start for this app.
-- Location: choose a nearby US region with good availability.
-- OS: Ubuntu 24.04 LTS or Debian 12.
+- Location: Dallas for the current production server.
+- OS: Ubuntu 24.04 LTS.
 - Firewall: allow `22`, `80`, and `443`. Do not expose `3001` publicly.
 
 ## 2. Packages
 
-Install system packages:
+Install system packages. Use Node 22 or newer; Ubuntu's default Node package is
+too old for the built-in SQLite API used by this app.
 
 ```bash
 sudo apt update
-sudo apt install -y git nodejs npm caddy sqlite3
+sudo apt install -y git curl ca-certificates gnupg sqlite3 ufw caddy
 ```
 
-Use Node 22 or newer. If the distro package is older, install a current Node
-LTS from your preferred trusted source before starting the service.
+The current production server uses NodeSource's Node 22 apt package.
 
 ## 3. Deploy Code
 
@@ -44,7 +43,7 @@ Required production values:
 - `ADMIN_PASSWORD_HASH`
 - `COOKIE_SECRET`
 - `COOKIE_SECURE=true`
-- `PUBLIC_STORE_URL=https://your-domain.example`
+- `PUBLIC_STORE_URL=https://plainstore.net`
 - `PICKUP_LOCATION`
 - `PICKUP_INSTRUCTIONS`
 - `MAIL_FROM`
@@ -81,14 +80,6 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now plain-store
 ```
 
-If the service file still points at `/home/korgan/store`, edit it for the VPS
-path before copying:
-
-```ini
-WorkingDirectory=/opt/plain-store
-ExecStart=/usr/bin/npm start
-```
-
 Check status:
 
 ```bash
@@ -98,10 +89,14 @@ journalctl -u plain-store -f
 
 ## 6. Caddy
 
-Use Caddy as the public HTTPS reverse proxy. Example:
+Use Caddy as the public HTTPS reverse proxy. Current production config:
 
 ```caddyfile
-your-domain.example {
+www.plainstore.net {
+  redir https://plainstore.net{uri} permanent
+}
+
+plainstore.net {
   encode zstd gzip
   reverse_proxy 127.0.0.1:3001
 }
@@ -116,9 +111,9 @@ sudo systemctl reload caddy
 
 ## 7. DNS
 
-- Add an `A` record for the domain pointing to the server IPv4.
-- Add an `AAAA` record if using IPv6.
-- Wait for DNS propagation, then visit `https://your-domain.example`.
+- Add an `A` record for `plainstore.net` pointing to the server IPv4.
+- Add an `A` record for `www.plainstore.net` pointing to the server IPv4.
+- Wait for DNS propagation, then visit `https://plainstore.net`.
 
 ## 8. Smoke Test
 
@@ -126,7 +121,7 @@ After deploy:
 
 ```bash
 curl -fsS http://127.0.0.1:3001/healthz
-curl -I https://your-domain.example
+curl -I https://plainstore.net
 ```
 
 Manual checks:
@@ -157,6 +152,9 @@ Minimum production habit:
 - Keep local backups under `/opt/plain-store/backups`.
 - Periodically copy backups off-server.
 - Do a restore drill before relying on the store operationally.
+- Current production also has `plain-store-backup.timer`, a daily systemd timer
+  scheduled for 03:15 UTC.
+- Local off-server pulls use `npm run backup:pull-vultr`.
 
 ## 10. Update / Rollback
 

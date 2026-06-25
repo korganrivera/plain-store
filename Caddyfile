@@ -1,4 +1,8 @@
-store.example.com {
+www.plainstore.net {
+  redir https://plainstore.net{uri} permanent
+}
+
+plainstore.net {
   encode zstd gzip
   reverse_proxy 127.0.0.1:3001
 }

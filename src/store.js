@@ -196,10 +196,10 @@ export function createOrder({ email, fullName, pickupDetails, postalCode, notes,
   );
   const insertOrder = db.prepare(`
     INSERT INTO orders (
-      order_number, email, full_name, shipping_address, postal_code, status,
+      order_number, status_token_hash, email, full_name, shipping_address, postal_code, status,
       subtotal_cents, shipping_cents, total_cents, notes
     ) VALUES (
-      @order_number, @email, @full_name, @shipping_address, @postal_code, 'requested',
+      @order_number, @status_token_hash, @email, @full_name, @shipping_address, @postal_code, 'requested',
       @subtotal_cents, @shipping_cents, @total_cents, @notes
     )
   `);
@@ -241,9 +241,11 @@ export function createOrder({ email, fullName, pickupDetails, postalCode, notes,
     const shippingCents = 0;
     const totalCents = subtotalCents + shippingCents;
     const orderNumber = `ORD-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
+    const statusToken = crypto.randomBytes(32).toString("base64url");
 
     const orderResult = insertOrder.run({
       order_number: orderNumber,
+      status_token_hash: tokenHash(statusToken),
       email,
       full_name: fullName,
       shipping_address: pickupDetails,
@@ -259,7 +261,7 @@ export function createOrder({ email, fullName, pickupDetails, postalCode, notes,
       updateInventory.run({ product_id: item.product_id, quantity: item.quantity });
     }
 
-    return getOrderByNumber(orderNumber);
+    return { ...getOrderByNumber(orderNumber), status_token: statusToken };
   });
 }
 
@@ -308,6 +310,71 @@ export function requestBackInStockNotification(productId, email) {
     .run(productId, email.toLowerCase());
 
   return { product, created: result.changes > 0 };
+}
+
+export function createPendingBackInStockConfirmation({ productId, email, requestIp = "" }) {
+  const product = getProductById(productId);
+  if (!product || product.status !== "active") {
+    throw new Error("That product is unavailable.");
+  }
+  if (product.inventory_count > 0) {
+    throw new Error("That product is already in stock.");
+  }
+
+  const token = crypto.randomBytes(32).toString("base64url");
+  const expiresAt = sqliteDateTimeFromNow(orderConfirmationMinutes);
+  db.prepare("DELETE FROM pending_back_in_stock_confirmations WHERE expires_at < CURRENT_TIMESTAMP OR used_at IS NOT NULL").run();
+  db.prepare(`
+    INSERT INTO pending_back_in_stock_confirmations (
+      token_hash, product_id, email, request_ip, expires_at
+    ) VALUES (
+      @token_hash, @product_id, @email, @request_ip, @expires_at
+    )
+  `).run({
+    token_hash: tokenHash(token),
+    product_id: product.id,
+    email: email.toLowerCase(),
+    request_ip: requestIp,
+    expires_at: expiresAt,
+  });
+
+  return {
+    token,
+    email: email.toLowerCase(),
+    product,
+    expires_at: expiresAt,
+    expiresMinutes: orderConfirmationMinutes,
+  };
+}
+
+export function confirmPendingBackInStockNotification(token) {
+  const hash = tokenHash(token);
+  return runInTransaction(() => {
+    const pending = db
+      .prepare(`
+        SELECT id, product_id, email
+        FROM pending_back_in_stock_confirmations
+        WHERE token_hash = ?
+          AND used_at IS NULL
+          AND expires_at > CURRENT_TIMESTAMP
+      `)
+      .get(hash);
+
+    if (!pending) {
+      throw new Error("This confirmation link is invalid or expired.");
+    }
+
+    const request = requestBackInStockNotification(pending.product_id, pending.email);
+    db.prepare("UPDATE pending_back_in_stock_confirmations SET used_at = CURRENT_TIMESTAMP WHERE id = ?").run(pending.id);
+    db.prepare(`
+      INSERT INTO verified_contacts (email, first_verified_at, last_verified_at)
+      VALUES (?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ON CONFLICT(email) DO UPDATE SET
+        last_verified_at = CURRENT_TIMESTAMP
+    `).run(pending.email);
+
+    return request;
+  });
 }
 
 export function listPendingBackInStockRequests(productId) {
@@ -425,15 +492,23 @@ export function confirmPendingOrder(token) {
 }
 
 export function getOrderByNumber(orderNumber) {
+  return getOrderByWhere("order_number = ?", orderNumber);
+}
+
+export function getOrderByStatusToken(token) {
+  return getOrderByWhere("status_token_hash = ?", tokenHash(token));
+}
+
+function getOrderByWhere(whereClause, value) {
   const order = db
     .prepare(`
       SELECT
         id, order_number, email, full_name, shipping_address, postal_code, status, archived_at, inventory_released_at,
         subtotal_cents, shipping_cents, total_cents, notes, created_at
       FROM orders
-      WHERE order_number = ?
+      WHERE ${whereClause}
     `)
-    .get(orderNumber);
+    .get(value);
 
   if (!order) {
     return null;

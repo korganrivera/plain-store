@@ -1,9 +1,14 @@
 import crypto from "node:crypto";
 import express from "express";
+import fs from "node:fs";
+import path from "node:path";
+import sharp from "sharp";
 import {
-  createOrder,
   archiveOrder,
+  confirmPendingBackInStockNotification,
   confirmPendingOrder,
+  createOrder,
+  createPendingBackInStockConfirmation,
   createPendingOrderConfirmation,
   deleteCategory,
   deleteProduct,
@@ -11,6 +16,7 @@ import {
   getCartProducts,
   getCategoryBySlug,
   getOrderByNumber,
+  getOrderByStatusToken,
   getProductById,
   getProductBySlug,
   isContactVerified,
@@ -36,6 +42,7 @@ import {
   cartPage,
   categoryPage,
   checkoutPage,
+  contactPage,
   emailVerificationErrorPage,
   emailVerificationSentPage,
   homePage,
@@ -53,9 +60,11 @@ import {
   readCookies,
   setCookie,
 } from "./utils.js";
-import { parsePositiveInt, requireAdminProductFields, requireCheckoutFields } from "./validation.js";
+import { parsePositiveInt, requireAdminProductFields, requireCheckoutFields, requireContactFields } from "./validation.js";
 import {
   sendBackInStockEmail,
+  sendBackInStockConfirmationEmail,
+  sendContactMessageEmail,
   sendOrderConfirmationEmail,
   sendOrderPickedUpEmail,
   sendOrderReadyEmail,
@@ -68,11 +77,16 @@ const app = express();
 const adminPassword = process.env.ADMIN_PASSWORD || "change-me";
 const adminPasswordHash = process.env.ADMIN_PASSWORD_HASH || "";
 const forceSecureCookies = process.env.COOKIE_SECURE === "true";
+const trustProxy = process.env.TRUST_PROXY || "loopback";
 const hourMs = 60 * 60 * 1000;
 const dayMs = 24 * hourMs;
 const adminSessionSeconds = 60 * 60 * 12;
+const publicImagesDir = path.resolve("public/images");
+const uploadMaxMegabytes = 5;
+const uploadMaxBytes = uploadMaxMegabytes * 1024 * 1024;
+const listedImagePattern = /\.(gif|jpe?g|png|svg|webp)$/i;
 
-app.set("trust proxy", true);
+app.set("trust proxy", trustProxy);
 app.disable("x-powered-by");
 app.use(express.urlencoded({ extended: false }));
 app.use(express.static("public", { extensions: ["html"], maxAge: "1d" }));
@@ -116,22 +130,263 @@ function setFlash(res, type, message) {
   });
 }
 
+function listProductImages() {
+  try {
+    return fs
+      .readdirSync(publicImagesDir, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && listedImagePattern.test(entry.name))
+      .map((entry) => ({
+        filename: entry.name,
+        path: `/images/${entry.name}`,
+      }))
+      .sort((a, b) => a.filename.localeCompare(b.filename));
+  } catch (error) {
+    console.error("Failed to list product images:", error);
+    return [];
+  }
+}
+
+function parseMultipartForm(maxBytes) {
+  return (req, res, next) => {
+    const contentType = req.headers["content-type"] || "";
+    const boundary = contentType.match(/multipart\/form-data;\s*boundary=(?:"([^"]+)"|([^;]+))/i)?.[1]
+      || contentType.match(/multipart\/form-data;\s*boundary=(?:"([^"]+)"|([^;]+))/i)?.[2];
+    if (!boundary) {
+      return res.status(400).send("Expected multipart form data.");
+    }
+
+    const chunks = [];
+    let byteCount = 0;
+    let tooLarge = false;
+
+    req.on("data", (chunk) => {
+      byteCount += chunk.length;
+      if (byteCount > maxBytes) {
+        tooLarge = true;
+        chunks.length = 0;
+        return;
+      }
+      chunks.push(chunk);
+    });
+
+    req.on("error", next);
+
+    req.on("end", () => {
+      if (tooLarge) {
+        return res.status(413).send("Uploaded image is too large.");
+      }
+
+      try {
+        const body = Buffer.concat(chunks).toString("latin1");
+        const delimiter = `--${boundary}`;
+        const parts = body.split(delimiter).slice(1, -1);
+        req.body = {};
+        req.files = {};
+
+        for (let part of parts) {
+          part = part.replace(/^\r\n/, "").replace(/\r\n$/, "");
+          const headerEnd = part.indexOf("\r\n\r\n");
+          if (headerEnd === -1) {
+            continue;
+          }
+          const rawHeaders = part.slice(0, headerEnd);
+          const content = part.slice(headerEnd + 4);
+          const disposition = rawHeaders.match(/content-disposition:\s*form-data;([^\r\n]+)/i)?.[1] || "";
+          const name = disposition.match(/name="([^"]+)"/)?.[1];
+          if (!name) {
+            continue;
+          }
+
+          const filename = disposition.match(/filename="([^"]*)"/)?.[1];
+          if (filename !== undefined) {
+            req.files[name] = {
+              filename,
+              mimeType: rawHeaders.match(/content-type:\s*([^\r\n]+)/i)?.[1]?.trim().toLowerCase() || "",
+              buffer: Buffer.from(content, "latin1"),
+            };
+          } else {
+            req.body[name] = Buffer.from(content, "latin1").toString("utf8");
+          }
+        }
+        next();
+      } catch (error) {
+        next(error);
+      }
+    });
+  };
+}
+
+function uploadedImageExtension(file) {
+  const { buffer, mimeType } = file;
+  if (mimeType === "image/jpeg" && buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return "jpg";
+  }
+  if (
+    mimeType === "image/png" &&
+    buffer.length >= 8 &&
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47 &&
+    buffer[4] === 0x0d &&
+    buffer[5] === 0x0a &&
+    buffer[6] === 0x1a &&
+    buffer[7] === 0x0a
+  ) {
+    return "png";
+  }
+  if (
+    mimeType === "image/webp" &&
+    buffer.length >= 12 &&
+    buffer.toString("ascii", 0, 4) === "RIFF" &&
+    buffer.toString("ascii", 8, 12) === "WEBP"
+  ) {
+    return "webp";
+  }
+  if (
+    mimeType === "image/gif" &&
+    buffer.length >= 6 &&
+    (buffer.toString("ascii", 0, 6) === "GIF87a" || buffer.toString("ascii", 0, 6) === "GIF89a")
+  ) {
+    return "gif";
+  }
+  return null;
+}
+
+function safeImageBaseName(filename) {
+  const parsed = path.parse(path.basename(filename || "image"));
+  const safe = parsed.name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
+  return safe || "image";
+}
+
+async function optimizedProductImageBuffer(file) {
+  return sharp(file.buffer)
+    .rotate()
+    .resize({
+      width: 900,
+      height: 900,
+      fit: "inside",
+      withoutEnlargement: true,
+    })
+    .flatten({ background: "#fffdf8" })
+    .jpeg({ quality: 82, mozjpeg: true })
+    .toBuffer();
+}
+
+async function saveUploadedProductImage(file) {
+  if (!file || file.buffer.length === 0) {
+    throw new Error("Choose an image to upload.");
+  }
+
+  const extension = uploadedImageExtension(file);
+  if (!extension) {
+    throw new Error("Upload a JPEG, PNG, WebP, or GIF image.");
+  }
+
+  const optimizedBuffer = await optimizedProductImageBuffer(file);
+  fs.mkdirSync(publicImagesDir, { recursive: true });
+  const baseName = safeImageBaseName(file.filename);
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const suffix = `${Date.now().toString(36)}-${crypto.randomBytes(3).toString("hex")}`;
+    const filename = `${baseName}-${suffix}.jpg`;
+    const targetPath = path.join(publicImagesDir, filename);
+    try {
+      fs.writeFileSync(targetPath, optimizedBuffer, { flag: "wx" });
+      return `/images/${filename}`;
+    } catch (error) {
+      if (error.code !== "EEXIST") {
+        throw error;
+      }
+    }
+  }
+  throw new Error("Could not create a unique image filename.");
+}
+
+function productImageFile(imagePath) {
+  const normalizedPath = plainText(imagePath, 200);
+  if (!normalizedPath.startsWith("/images/")) {
+    throw new Error("Invalid image path.");
+  }
+
+  const filename = path.basename(normalizedPath);
+  if (`/images/${filename}` !== normalizedPath || !listedImagePattern.test(filename) || filename === "placeholder.svg") {
+    throw new Error("Invalid image path.");
+  }
+
+  const filepath = path.join(publicImagesDir, filename);
+  const relativePath = path.relative(publicImagesDir, filepath);
+  if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+    throw new Error("Invalid image path.");
+  }
+
+  return { filename, path: normalizedPath, filepath };
+}
+
+function deleteProductImage(imagePath) {
+  const image = productImageFile(imagePath);
+  if (!fs.existsSync(image.filepath)) {
+    throw new Error("Image not found.");
+  }
+
+  const productsUsingImage = listProducts({ includeInactive: true }).filter((product) => product.image_path === image.path);
+  if (productsUsingImage.length > 0) {
+    const names = productsUsingImage.map((product) => product.name).join(", ");
+    throw new Error(`Image is still used by: ${names}. Remove it from those products first.`);
+  }
+
+  fs.unlinkSync(image.filepath);
+  return image;
+}
+
 function cartCount(req) {
   return req.cart.reduce((sum, item) => sum + item.quantity, 0);
+}
+
+function cartItemsCookie(items) {
+  return items.map((item) => ({ productId: item.id, quantity: item.quantity }));
+}
+
+function cartItemsCount(items) {
+  return items.reduce((sum, item) => sum + item.quantity, 0);
+}
+
+function stockUnitLabel(quantity) {
+  return quantity === 1 ? "item is" : "items are";
+}
+
+function cartNoticeFlash(notices, fallback = null) {
+  if (notices.length === 0) {
+    return fallback;
+  }
+  return { type: "error", message: notices.join(" ") };
 }
 
 function hydrateCart(req) {
   const products = getCartProducts(req.cart.map((item) => item.productId));
   const byId = new Map(products.map((product) => [product.id, product]));
   const items = [];
+  const notices = [];
   for (const entry of req.cart) {
     const product = byId.get(entry.productId);
-    if (!product || product.status !== "active") {
+    if (!product) {
+      notices.push("An item was removed from your basket because it is no longer available.");
+      continue;
+    }
+    if (product.status !== "active") {
+      notices.push(`${product.name} was removed from your basket because it is no longer available.`);
       continue;
     }
     const quantity = Math.min(entry.quantity, product.inventory_count);
     if (quantity <= 0) {
+      notices.push(`${product.name} is now out of stock and was removed from your basket.`);
       continue;
+    }
+    if (quantity < entry.quantity) {
+      notices.push(`${product.name} was reduced to ${quantity} because only ${quantity} ${stockUnitLabel(quantity)} available.`);
     }
     items.push({
       ...product,
@@ -148,6 +403,7 @@ function hydrateCart(req) {
       shippingCents,
       totalCents: subtotalCents + shippingCents,
     },
+    notices,
   };
 }
 
@@ -178,6 +434,30 @@ function checkoutLimitError(req, email, verified) {
     }
   }
 
+  return null;
+}
+
+function orderLookupLimitError(req, orderNumber, email) {
+  const limits = [
+    [`order-lookup:ip:${clientIp(req)}`, { max: 20, windowMs: hourMs }],
+    [`order-lookup:key:${orderNumber}:${email}`, { max: 6, windowMs: hourMs }],
+  ];
+
+  for (const [key, options] of limits) {
+    const result = checkRateLimit(key, options);
+    if (!result.allowed) {
+      return `Too many order lookup attempts. Please try again in ${formatRetryAfter(result.retryAfterSeconds)}.`;
+    }
+  }
+
+  return null;
+}
+
+function confirmationLimitError(req, kind) {
+  const result = checkRateLimit(`${kind}-confirm:ip:${clientIp(req)}`, { max: 30, windowMs: hourMs });
+  if (!result.allowed) {
+    return `Too many confirmation attempts. Please try again in ${formatRetryAfter(result.retryAfterSeconds)}.`;
+  }
   return null;
 }
 
@@ -272,6 +552,64 @@ app.get("/search", (req, res) => {
   res.send(html);
 });
 
+app.get("/contact", (req, res) => {
+  res.send(contactPage({ cartCount: cartCount(req), csrfToken: req.csrfToken, flash: req.flash }));
+});
+
+app.post("/contact", requireCsrf, async (req, res) => {
+  const validated = requireContactFields(req.body);
+  if (validated.error) {
+    return res.status(400).send(
+      contactPage({
+        cartCount: cartCount(req),
+        csrfToken: req.csrfToken,
+        values: req.body,
+        error: validated.error,
+      }),
+    );
+  }
+
+  if (validated.value.spam) {
+    setFlash(res, "success", "Thanks. Your message was sent.");
+    return res.redirect("/contact");
+  }
+
+  const limits = [
+    [`contact:ip:${clientIp(req)}`, { max: 10, windowMs: hourMs }],
+    [`contact:email:${validated.value.email}`, { max: 4, windowMs: hourMs }],
+  ];
+  for (const [key, options] of limits) {
+    const result = checkRateLimit(key, options);
+    if (!result.allowed) {
+      return res.status(429).send(
+        contactPage({
+          cartCount: cartCount(req),
+          csrfToken: req.csrfToken,
+          values: req.body,
+          error: `Too many messages. Please try again in ${formatRetryAfter(result.retryAfterSeconds)}.`,
+        }),
+      );
+    }
+  }
+
+  try {
+    await sendContactMessageEmail(validated.value);
+  } catch (emailError) {
+    console.error("Failed to send contact message email:", emailError);
+    return res.status(500).send(
+      contactPage({
+        cartCount: cartCount(req),
+        csrfToken: req.csrfToken,
+        values: req.body,
+        error: "We could not send the message. Please try again.",
+      }),
+    );
+  }
+
+  setFlash(res, "success", "Thanks. Your message was sent.");
+  return res.redirect("/contact");
+});
+
 app.get("/c/:slug", (req, res) => {
   const category = getCategoryBySlug(req.params.slug);
   if (!category) {
@@ -305,36 +643,65 @@ app.post("/cart/add", requireCsrf, (req, res) => {
 
   const nextCart = [...req.cart];
   const existing = nextCart.find((item) => item.productId === product.id);
+  const previousQuantity = existing?.quantity || 0;
+  let nextQuantity = Math.min(quantity, product.inventory_count);
   if (existing) {
-    existing.quantity = Math.min(existing.quantity + quantity, product.inventory_count);
+    nextQuantity = Math.min(previousQuantity + quantity, product.inventory_count);
+    existing.quantity = nextQuantity;
   } else {
-    nextCart.push({ productId: product.id, quantity: Math.min(quantity, product.inventory_count) });
+    nextCart.push({ productId: product.id, quantity: nextQuantity });
   }
 
   saveCart(res, nextCart);
-  setFlash(res, "success", `${product.name} added to basket.`);
+  if (previousQuantity + quantity > product.inventory_count) {
+    setFlash(res, "error", `Only ${product.inventory_count} ${stockUnitLabel(product.inventory_count)} available, so your basket now has ${nextQuantity}.`);
+  } else {
+    setFlash(res, "success", `${product.name} added to basket.`);
+  }
   res.redirect("/cart");
 });
 
 app.get("/cart", (req, res) => {
-  const { items, totals } = hydrateCart(req);
-  saveCart(
-    res,
-    items.map((item) => ({ productId: item.id, quantity: item.quantity })),
+  const { items, totals, notices } = hydrateCart(req);
+  saveCart(res, cartItemsCookie(items));
+  res.send(
+    cartPage({
+      items,
+      totals,
+      cartCount: cartItemsCount(items),
+      csrfToken: req.csrfToken,
+      flash: cartNoticeFlash(notices, req.flash),
+    }),
   );
-  res.send(cartPage({ items, totals, cartCount: cartCount(req), csrfToken: req.csrfToken, flash: req.flash }));
 });
 
 app.post("/cart/update", requireCsrf, (req, res) => {
   const productId = Number(req.body.productId);
   const quantity = Number.parseInt(String(req.body.quantity ?? ""), 10);
   const product = getProductById(productId);
-  if (!product) {
+  if (!product || product.status !== "active") {
+    saveCart(
+      res,
+      req.cart.filter((item) => item.productId !== productId),
+    );
+    setFlash(res, "error", "That item is no longer available and was removed from your basket.");
     return res.redirect("/cart");
   }
   const nextCart = req.cart.filter((item) => item.productId !== productId);
   if (Number.isFinite(quantity) && quantity > 0) {
-    nextCart.push({ productId, quantity: Math.min(quantity, product.inventory_count) });
+    const nextQuantity = Math.min(quantity, product.inventory_count);
+    if (nextQuantity > 0) {
+      nextCart.push({ productId, quantity: nextQuantity });
+    }
+    if (nextQuantity < quantity) {
+      setFlash(
+        res,
+        "error",
+        nextQuantity > 0
+          ? `Only ${product.inventory_count} ${stockUnitLabel(product.inventory_count)} available, so ${product.name} was set to ${nextQuantity}.`
+          : `${product.name} is now out of stock and was removed from your basket.`,
+      );
+    }
   }
   saveCart(res, nextCart);
   res.redirect("/cart");
@@ -348,7 +715,7 @@ app.post("/cart/remove", requireCsrf, (req, res) => {
   res.redirect("/cart");
 });
 
-app.post("/back-in-stock", requireCsrf, (req, res) => {
+app.post("/back-in-stock", requireCsrf, async (req, res) => {
   const productId = Number.parseInt(String(req.body.productId ?? ""), 10);
   const email = plainText(req.body.email, 200).toLowerCase();
   const product = Number.isInteger(productId) ? getProductById(productId) : null;
@@ -376,6 +743,23 @@ app.post("/back-in-stock", requireCsrf, (req, res) => {
   }
 
   try {
+    if (!isContactVerified(email)) {
+      const pending = createPendingBackInStockConfirmation({
+        productId: product.id,
+        email,
+        requestIp: clientIp(req),
+      });
+      try {
+        await sendBackInStockConfirmationEmail(pending);
+      } catch (emailError) {
+        console.error("Failed to send back-in-stock confirmation email:", emailError);
+        setFlash(res, "error", "We could not send the confirmation email. Please try again.");
+        return res.redirect(redirectPath);
+      }
+      setFlash(res, "success", "Check your email to confirm this back-in-stock notification request.");
+      return res.redirect(redirectPath);
+    }
+
     const request = requestBackInStockNotification(product.id, email);
     setFlash(
       res,
@@ -390,8 +774,39 @@ app.post("/back-in-stock", requireCsrf, (req, res) => {
   res.redirect(redirectPath);
 });
 
+app.get("/back-in-stock/confirm/:token", (req, res) => {
+  const limitError = confirmationLimitError(req, "back-in-stock");
+  if (limitError) {
+    setFlash(res, "error", limitError);
+    return res.redirect("/");
+  }
+
+  const token = plainText(req.params.token, 120);
+  let request;
+  try {
+    request = confirmPendingBackInStockNotification(token);
+  } catch (error) {
+    setFlash(res, "error", error.message);
+    return res.redirect("/");
+  }
+
+  setFlash(
+    res,
+    "success",
+    request.created
+      ? `Email confirmed. We will email you when ${request.product.name} is back in stock.`
+      : "Email confirmed. You are already on the notification list for this item.",
+  );
+  res.redirect(`/p/${request.product.slug}`);
+});
+
 app.get("/checkout", (req, res) => {
-  const { items, totals } = hydrateCart(req);
+  const { items, totals, notices } = hydrateCart(req);
+  if (notices.length > 0) {
+    saveCart(res, cartItemsCookie(items));
+    setFlash(res, "error", notices.join(" "));
+    return res.redirect("/cart");
+  }
   if (items.length === 0) {
     setFlash(res, "error", "Your basket is empty.");
     return res.redirect("/cart");
@@ -410,7 +825,12 @@ app.get("/checkout", (req, res) => {
 });
 
 app.post("/checkout", requireCsrf, async (req, res) => {
-  const { items, totals } = hydrateCart(req);
+  const { items, totals, notices } = hydrateCart(req);
+  if (notices.length > 0) {
+    saveCart(res, cartItemsCookie(items));
+    setFlash(res, "error", notices.join(" "));
+    return res.redirect("/cart");
+  }
   if (items.length === 0) {
     setFlash(res, "error", "Your basket is empty.");
     return res.redirect("/cart");
@@ -494,7 +914,7 @@ app.post("/checkout", requireCsrf, async (req, res) => {
       console.error("Failed to send order-submitted email:", emailError);
     }
     clearCookie(res, "cart", { secure: forceSecureCookies || req.secure });
-    return res.redirect(`/order/${order.order_number}`);
+    return res.redirect(`/order/status/${order.status_token}`);
   } catch (error) {
     return res.send(
       checkoutPage({
@@ -511,6 +931,16 @@ app.post("/checkout", requireCsrf, async (req, res) => {
 });
 
 app.get("/order/confirm/:token", async (req, res) => {
+  const limitError = confirmationLimitError(req, "order");
+  if (limitError) {
+    return res.status(429).send(
+      emailVerificationErrorPage({
+        message: limitError,
+        cartCount: cartCount(req),
+      }),
+    );
+  }
+
   const token = plainText(req.params.token, 120);
   let order;
   try {
@@ -532,15 +962,20 @@ app.get("/order/confirm/:token", async (req, res) => {
 
   clearCookie(res, "cart", { secure: forceSecureCookies || req.secure });
   setFlash(res, "success", "Email confirmed. Your pickup order was submitted.");
-  res.redirect(`/order/${order.order_number}`);
+  res.redirect(`/order/status/${order.status_token}`);
 });
 
-app.get("/order/:orderNumber", (req, res) => {
-  const order = getOrderByNumber(plainText(req.params.orderNumber, 20));
+app.get("/order/status/:token", (req, res) => {
+  const order = getOrderByStatusToken(plainText(req.params.token, 120));
   if (!order) {
     return res.status(404).send("Order not found.");
   }
   res.send(orderPage({ order, cartCount: cartCount(req), flash: req.flash }));
+});
+
+app.get("/order/:orderNumber", (req, res) => {
+  setFlash(res, "error", "Use order lookup to view pickup order details.");
+  res.redirect("/order-lookup");
 });
 
 app.get("/order-lookup", (req, res) => {
@@ -550,6 +985,18 @@ app.get("/order-lookup", (req, res) => {
 app.post("/order-lookup", requireCsrf, (req, res) => {
   const orderNumber = plainText(req.body.orderNumber, 20).toUpperCase();
   const email = plainText(req.body.email, 200).toLowerCase();
+  const limitError = orderLookupLimitError(req, orderNumber, email);
+  if (limitError) {
+    return res.status(429).send(
+      orderLookupPage({
+        cartCount: cartCount(req),
+        csrfToken: req.csrfToken,
+        values: { orderNumber, email },
+        error: limitError,
+      }),
+    );
+  }
+
   const order = lookupOrder(orderNumber, email);
   if (!order) {
     return res.send(
@@ -578,6 +1025,8 @@ app.get("/admin/catalog", requireAdmin, (req, res) => {
       cartCount: cartCount(req),
       products: listProducts({ includeInactive: true }),
       categories: listCategories(),
+      productImages: listProductImages(),
+      imageUploadMaxMegabytes: uploadMaxMegabytes,
       editingProduct,
       editingCategory,
       flash: req.flash,
@@ -659,6 +1108,26 @@ app.post("/admin/categories/delete", requireCsrf, requireAdmin, (req, res) => {
   try {
     deleteCategory(categoryId);
     setFlash(res, "success", "Category deleted.");
+  } catch (error) {
+    setFlash(res, "error", error.message);
+  }
+  res.redirect("/admin/catalog");
+});
+
+app.post("/admin/images", requireAdmin, parseMultipartForm(uploadMaxBytes), requireCsrf, async (req, res) => {
+  try {
+    const imagePath = await saveUploadedProductImage(req.files?.image);
+    setFlash(res, "success", `Image uploaded: ${imagePath}`);
+  } catch (error) {
+    setFlash(res, "error", error.message);
+  }
+  res.redirect("/admin/catalog");
+});
+
+app.post("/admin/images/delete", requireCsrf, requireAdmin, (req, res) => {
+  try {
+    const image = deleteProductImage(req.body.imagePath);
+    setFlash(res, "success", `Image deleted: ${image.path}`);
   } catch (error) {
     setFlash(res, "error", error.message);
   }
