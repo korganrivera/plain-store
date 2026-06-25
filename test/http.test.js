@@ -185,6 +185,21 @@ after(() => {
   }
 });
 
+test("home catalog omits redundant product heading and count", async () => {
+  const home = await fetch(`${base}/`);
+  const homeHtml = await home.text();
+
+  assert.equal(home.status, 200);
+  assert.doesNotMatch(homeHtml, /<h2>Products<\/h2>/);
+  assert.doesNotMatch(homeHtml, /<span>\d+ items<\/span>/);
+
+  const search = await fetch(`${base}/search?q=eggs`);
+  const searchHtml = await search.text();
+
+  assert.equal(search.status, 200);
+  assert.match(searchHtml, /<h2>Results for "eggs"<\/h2>/);
+});
+
 test("category and product pages show breadcrumb navigation", async () => {
   const category = await fetch(`${base}/c/eggs`);
   const categoryHtml = await category.text();

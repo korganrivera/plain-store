@@ -172,10 +172,15 @@ export function homePage({ categories, products, search, cartCount, flash = null
           : ""
       }
       <section class="stack-tight" id="catalog">
-        <div class="section-heading">
-          <h2>${search ? `Results for "${escapeHtml(search)}"` : "Products"}</h2>
-          <span>${products.length} items</span>
-        </div>
+        ${
+          search
+            ? `
+              <div class="section-heading">
+                <h2>Results for "${escapeHtml(search)}"</h2>
+              </div>
+            `
+            : ""
+        }
         ${productGrid(products)}
       </section>
     `,
